@@ -1,0 +1,17 @@
+{
+  "appId": "com.flowcash.app",
+  "appName": "FlowCash",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "always",
+    "scheme": "flowcash"
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  }
+}
