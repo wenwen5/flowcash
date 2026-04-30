@@ -432,7 +432,7 @@ export function AnalyticsPage() {
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: '#F9FAFB' }}>
       {/* Safe area */}
-      <div className="shrink-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', backgroundColor: '#fff', borderBottom: '1px solid #F0F0F0' }} />
+      <div className="shrink-0 safe-area-top" style={{ backgroundColor: '#fff', borderBottom: '1px solid #F0F0F0' }} />
 
       {/* Report Type Toggle */}
       <div className="shrink-0 px-4 pt-3 pb-2">

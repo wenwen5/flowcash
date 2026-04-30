@@ -22,13 +22,29 @@ jobs:
         with:
           node-version: 20
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/App/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/App/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
       - name: Install dependencies
         run: npm install
 
       - name: Build web assets
         run: npm run build
 
-      - name: Sync Capacitor iOS
+      - name: Sync Capacitor iOS (includes pod install)
         run: npx cap sync ios
 
       - name: Build unsigned IPA
@@ -44,6 +60,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
+            ONLY_ACTIVE_ARCH=NO \
             | xcpretty --color && exit ${PIPESTATUS[0]}
 
       - name: Package IPA

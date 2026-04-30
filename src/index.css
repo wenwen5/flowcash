@@ -21,6 +21,11 @@
     --expense: #FF3B30;
     --income: #34C759;
     --radius: 0.75rem;
+    /* safe-area placeholders - populated by JS at runtime */
+    --safe-area-bottom: 0px;
+    --safe-area-top: 0px;
+    --safe-area-left: 0px;
+    --safe-area-right: 0px;
   }
 
   * {
@@ -63,6 +68,13 @@
     min-height: 0;
   }
 
+  /* Every page's scrollable content gets bottom padding so the last item
+     isn't hidden behind the tab-bar + safe-area. */
+  .page-layer > div > .overflow-y-auto,
+  .page-layer > div > div > .overflow-y-auto {
+    padding-bottom: calc(1rem + var(--safe-area-bottom, 0px));
+  }
+
   .page-layer {
     position: absolute;
     inset: 0;
@@ -81,6 +93,7 @@
     pointer-events: auto;
   }
 
+  /* ───── 底部导航栏 ───── */
   .tab-bar {
     flex-shrink: 0;
     position: relative;
@@ -89,10 +102,11 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid rgba(0, 0, 0, 0.05);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--safe-area-bottom, 0px);
     transform: translateZ(0);
   }
 
+  /* ───── 记账弹窗 ───── */
   .bottom-sheet {
     position: fixed;
     inset: 0;
@@ -132,10 +146,10 @@
     transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
     max-height: 92vh;
-    max-height: calc(92vh - env(safe-area-inset-bottom, 0px));
+    max-height: calc(92dvh - var(--safe-area-bottom, 0px));
     display: flex;
     flex-direction: column;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--safe-area-bottom, 0px);
   }
 
   .bottom-sheet.open .bottom-sheet-panel {
@@ -179,11 +193,11 @@
   }
 
   .safe-area-top {
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: var(--safe-area-top, env(safe-area-inset-top, 0px));
   }
 
   .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
   }
 
   .gpu-layer {
