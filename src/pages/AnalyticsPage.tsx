@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Coffee, ShoppingBag, Bus, Film, Home, HeartPulse,
@@ -6,6 +6,7 @@ import {
   TrendingDown, TrendingUp, PieChart, BarChart3
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { KLineChart } from '@/components/KLineChart';
 
 const iconMap: Record<string, typeof Coffee> = {
   Coffee, ShoppingBag, Bus, Film, Home, HeartPulse, BookOpen, MoreHorizontal,
@@ -16,22 +17,17 @@ type ReportType = 'category' | 'trend';
 type Granularity = 'day' | 'week' | 'month';
 
 interface KPoint {
-  label: string;      // 轴上显示的文字
-  start: string;      // 区间起始日期
-  end: string;        // 区间结束日期
-  open: number;       // 期初净资产
-  close: number;      // 期末净资产
-  income: number;     // 区间内收入
-  expense: number;    // 区间内支出
+  label: string;
+  start: string;
+  end: string;
+  open: number;
+  close: number;
+  income: number;
+  expense: number;
 }
 
 /* ─────────────── Helpers ─────────────── */
 function parseDate(d: string) { return new Date(d + 'T00:00:00'); }
-function formatY(v: number) {
-  if (Math.abs(v) >= 10000) return (v / 10000).toFixed(1) + 'w';
-  if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + 'k';
-  return v.toFixed(0);
-}
 function startOfWeek(d: Date) {
   const r = new Date(d);
   const day = r.getDay();
@@ -145,240 +141,11 @@ function aggregate(daily: ReturnType<typeof buildDailyNetWorth>, g: Granularity)
   return groups;
 }
 
-function calcMA(data: KPoint[], period: number) {
-  return data.map((_, i) => {
-    if (i < period - 1) return null;
-    let sum = 0;
-    for (let j = 0; j < period; j++) sum += data[i - j].close;
-    return sum / period;
-  });
-}
-
-/* ─────────────── Canvas K-Line Chart ─────────────── */
-function KLineCanvas({
-  data,
-  transform,
-  onTransformChange,
-}: {
-  data: KPoint[];
-  transform: { scale: number; tx: number };
-  onTransformChange: (t: { scale: number; tx: number }) => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const gestureRef = useRef({
-    active: false, mode: null as 'pan' | 'pinch' | null,
-    startX: 0, startDist: 0, startScale: 1, startTx: 0,
-    pointers: new Map<number, { x: number; y: number }>(),
-  });
-
-  const padding = { top: 10, right: 10, bottom: 28, left: 56 };
-  const chartW = 320; // logical width inside canvas
-  const chartH = 220;
-
-  // Visible slice based on transform
-  const visibleCount = Math.max(5, Math.floor(data.length / Math.max(0.3, transform.scale)));
-  const maxTx = 0;
-  const minTx = -(data.length - visibleCount) * (chartW / Math.max(1, data.length));
-  const clampedTx = Math.min(maxTx, Math.max(minTx, transform.tx));
-
-  const barWidth = Math.max(3, Math.min(20, (chartW / visibleCount) * 0.65));
-  const barGap = (chartW / visibleCount) * 0.35;
-  const stepX = barWidth + barGap;
-
-  // Y scale
-  const allValues = data.map(d => Math.max(d.open, d.close));
-  const ma7 = calcMA(data, 7);
-  const ma14 = calcMA(data, 14);
-  const ma30 = calcMA(data, 30);
-  [ma7, ma14, ma30].forEach(ma => ma.forEach(v => { if (v !== null) allValues.push(v); }));
-
-  const maxV = allValues.length > 0 ? Math.max(...allValues) * 1.1 : 100;
-  const minV = allValues.length > 0 ? Math.min(...allValues, 0) * 1.1 : -10;
-  const range = maxV - minV || 1;
-
-  const yScale = (v: number) => padding.top + (1 - (v - minV) / range) * (chartH - padding.top - padding.bottom);
-
-  // Draw
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = (chartW + padding.left + padding.right) * dpr;
-    canvas.height = chartH * dpr;
-    canvas.style.width = `${canvas.width / dpr}px`;
-    canvas.style.height = `${canvas.height / dpr}px`;
-    ctx.scale(dpr, dpr);
-
-    ctx.clearRect(0, 0, chartW + padding.left + padding.right, chartH);
-
-    // Grid lines + Y labels
-    for (let i = 0; i <= 4; i++) {
-      const y = padding.top + ((chartH - padding.top - padding.bottom) * i) / 4;
-      const val = maxV - (range * i) / 4;
-      ctx.strokeStyle = '#F2F2F7';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(padding.left + chartW, y);
-      ctx.stroke();
-
-      ctx.fillStyle = '#C7C7CC';
-      ctx.font = '10px -apple-system, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(formatY(val), padding.left - 6, y);
-    }
-
-    // Determine visible range
-    const startIdx = Math.max(0, Math.floor(-clampedTx / stepX));
-    const endIdx = Math.min(data.length, startIdx + visibleCount + 2);
-
-    // Draw K bodies
-    for (let i = startIdx; i < endIdx; i++) {
-      const d = data[i];
-      const x = padding.left + i * stepX + barGap / 2 + clampedTx;
-      const top = yScale(Math.max(d.open, d.close));
-      const bottom = yScale(Math.min(d.open, d.close));
-      const h = Math.max(2, bottom - top);
-      const isUp = d.close >= d.open;
-      ctx.fillStyle = isUp ? '#34C759' : '#FF3B30';
-      ctx.globalAlpha = 0.85;
-      ctx.beginPath();
-      ctx.roundRect(x, top, barWidth, h, 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
-    // Draw MAs
-    const drawMA = (ma: (number | null)[], color: string) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      let started = false;
-      for (let i = startIdx; i < endIdx; i++) {
-        const v = ma[i];
-        if (v === null) continue;
-        const x = padding.left + i * stepX + barGap / 2 + barWidth / 2 + clampedTx;
-        const y = yScale(v);
-        if (!started) { ctx.moveTo(x, y); started = true; }
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    };
-
-    drawMA(ma7, '#FF9500');
-    drawMA(ma14, '#5856D6');
-    drawMA(ma30, '#007AFF');
-
-    // X labels
-    const labelStep = Math.max(1, Math.ceil((endIdx - startIdx) / 6));
-    ctx.fillStyle = '#C7C7CC';
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    for (let i = startIdx; i < endIdx; i += labelStep) {
-      const x = padding.left + i * stepX + barGap / 2 + barWidth / 2 + clampedTx;
-      if (x < padding.left || x > padding.left + chartW) continue;
-      ctx.fillText(data[i].label, x, chartH - padding.bottom + 4);
-    }
-
-    // Legend
-    ctx.fillStyle = '#34C759';
-    ctx.fillRect(padding.left + chartW - 140, 4, 8, 8);
-    ctx.fillStyle = '#1A1A1A';
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('盈', padding.left + chartW - 128, 10);
-
-    ctx.fillStyle = '#FF3B30';
-    ctx.fillRect(padding.left + chartW - 100, 4, 8, 8);
-    ctx.fillStyle = '#1A1A1A';
-    ctx.fillText('亏', padding.left + chartW - 88, 10);
-
-    ctx.fillStyle = '#FF9500';
-    ctx.fillRect(padding.left + chartW - 60, 4, 8, 8);
-    ctx.fillStyle = '#1A1A1A';
-    ctx.fillText('MA7', padding.left + chartW - 48, 10);
-  }, [data, clampedTx, stepX, barWidth, barGap, maxV, minV, range, ma7, ma14, ma30]);
-
-  // Gestures
-  const getDist = useCallback((a: { x: number; y: number }, b: { x: number; y: number }) =>
-    Math.hypot(b.x - a.x, b.y - a.y), []);
-
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    const g = gestureRef.current;
-    g.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    if (g.pointers.size === 1) {
-      g.mode = 'pan';
-      g.startX = e.clientX;
-      g.startTx = transform.tx;
-    } else if (g.pointers.size === 2) {
-      g.mode = 'pinch';
-      const pts = Array.from(g.pointers.values());
-      g.startDist = getDist(pts[0], pts[1]);
-      g.startScale = transform.scale;
-    }
-    g.active = true;
-  }, [transform, getDist]);
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const g = gestureRef.current;
-    if (!g.active || !g.pointers.has(e.pointerId)) return;
-    g.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (g.mode === 'pan' && g.pointers.size === 1) {
-      const dx = e.clientX - g.startX;
-      onTransformChange({ ...transform, tx: g.startTx + dx * 1.5 });
-    } else if (g.mode === 'pinch' && g.pointers.size === 2) {
-      const pts = Array.from(g.pointers.values());
-      const dist = getDist(pts[0], pts[1]);
-      const ratio = dist / (g.startDist || 1);
-      const newScale = Math.min(5, Math.max(0.3, g.startScale * ratio));
-      onTransformChange({ ...transform, scale: newScale });
-    }
-  }, [transform, onTransformChange, getDist]);
-
-  const onPointerUp = useCallback((e: React.PointerEvent) => {
-    const g = gestureRef.current;
-    g.pointers.delete(e.pointerId);
-    if (g.pointers.size === 0) {
-      g.active = false;
-      g.mode = null;
-    } else if (g.pointers.size === 1) {
-      g.mode = 'pan';
-      const remaining = Array.from(g.pointers.values())[0];
-      g.startX = remaining.x;
-      g.startTx = transform.tx;
-    }
-  }, [transform]);
-
-  return (
-    <div ref={containerRef} className="overflow-hidden">
-      <canvas
-        ref={canvasRef}
-        className="touch-none select-none w-full"
-        style={{ touchAction: 'none' }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onPointerLeave={onPointerUp}
-      />
-    </div>
-  );
-}
-
-/* ─────────────── Main Page ─────────────── */
 export function AnalyticsPage() {
   const { state, getMonthlyTotal, getMonthlyByCategory } = useApp();
   const [currentMonth, setCurrentMonth] = useState(state.currentMonth);
   const [reportType, setReportType] = useState<ReportType>('category');
   const [granularity, setGranularity] = useState<Granularity>('day');
-  const [transform, setTransform] = useState({ scale: 1, tx: 0 });
 
   const monthExpense = getMonthlyTotal(currentMonth, 'expense');
   const monthIncome = getMonthlyTotal(currentMonth, 'income');
@@ -420,15 +187,6 @@ export function AnalyticsPage() {
     return aggregate(daily, granularity);
   }, [state.transactions, granularity]);
 
-  // Auto granularity based on scale
-  useEffect(() => {
-    if (transform.scale >= 1.8 && granularity !== 'day') setGranularity('day');
-    else if (transform.scale <= 0.6 && transform.scale > 0.2 && granularity !== 'week') setGranularity('week');
-    else if (transform.scale <= 0.2 && granularity !== 'month') setGranularity('month');
-  }, [transform.scale, granularity]);
-
-  const resetTransform = () => setTransform({ scale: 1, tx: 0 });
-
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: '#F9FAFB' }}>
       {/* Safe area */}
@@ -438,7 +196,7 @@ export function AnalyticsPage() {
       <div className="shrink-0 px-4 pt-3 pb-2">
         <div className="flex gap-1 rounded-xl p-1" style={{ backgroundColor: '#F2F2F7' }}>
           <button
-            onClick={() => { setReportType('category'); resetTransform(); }}
+            onClick={() => { setReportType('category'); }}
             className="flex-1 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1.5"
             style={reportType === 'category'
               ? { backgroundColor: '#fff', color: '#1A1A1A', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
@@ -447,7 +205,7 @@ export function AnalyticsPage() {
             <PieChart size={16} /> 类别构成
           </button>
           <button
-            onClick={() => { setReportType('trend'); resetTransform(); }}
+            onClick={() => { setReportType('trend'); }}
             className="flex-1 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1.5"
             style={reportType === 'trend'
               ? { backgroundColor: '#fff', color: '#1A1A1A', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
@@ -591,7 +349,7 @@ export function AnalyticsPage() {
                   {(['day', 'week', 'month'] as Granularity[]).map(g => (
                     <button
                       key={g}
-                      onClick={() => { setGranularity(g); resetTransform(); }}
+                      onClick={() => { setGranularity(g); }}
                       className="px-3 py-1 rounded-full text-xs font-medium transition-all"
                       style={granularity === g
                         ? { backgroundColor: 'var(--brand)', color: '#fff' }
@@ -603,7 +361,7 @@ export function AnalyticsPage() {
                     </button>
                   ))}
                 </div>
-                <span className="text-[10px]" style={{ color: '#C7C7CC' }}>双指捏合缩放</span>
+                <span className="text-[10px]" style={{ color: '#C7C7CC' }}>单指滑动平移 · 双指捏合缩放</span>
               </div>
 
               {/* K-Line Chart */}
@@ -618,24 +376,18 @@ export function AnalyticsPage() {
                       <p className="text-sm" style={{ color: '#C7C7CC' }}>暂无数据，开始记账后查看趋势</p>
                     </div>
                   ) : (
-                    <KLineCanvas
+                    <KLineChart
                       data={klineData}
-                      transform={transform}
-                      onTransformChange={setTransform}
+                      onGranularityChange={setGranularity}
                     />
                   )}
-                  {/* Legend + Reset */}
+                  {/* Legend */}
                   <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTop: '1px solid #F0F0F0' }}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: '#34C759' }} /> 盈</span>
-                      <span className="text-[10px] flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: '#FF3B30' }} /> 亏</span>
+                    <div className="flex items-center gap-4">
                       <span className="text-[10px] flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: '#FF9500' }} /> MA7</span>
                       <span className="text-[10px] flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: '#5856D6' }} /> MA14</span>
                       <span className="text-[10px] flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: '#007AFF' }} /> MA30</span>
                     </div>
-                    {(transform.scale !== 1 || transform.tx !== 0) && (
-                      <button onClick={resetTransform} className="text-xs font-medium" style={{ color: '#007AFF' }}>重置</button>
-                    )}
                   </div>
                 </div>
               </div>
