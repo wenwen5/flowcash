@@ -16,6 +16,10 @@ const PAGES: { key: TabKey; component: React.FC }[] = [
   { key: 'profile', component: ProfilePage },
 ];
 
+/** Hard-coded fallback for notched iPhones */
+const FALLBACK_TOP = 47;
+const FALLBACK_BOTTOM = 34;
+
 /** Force a compositor repaint on every .tab-bar element */
 function forceTabBarRepaint() {
   document.querySelectorAll('.tab-bar').forEach((el) => {
@@ -23,13 +27,20 @@ function forceTabBarRepaint() {
   });
 }
 
-/** Apply safe-area insets to CSS variables */
+/** Apply insets to CSS variables. If the plugin reports 0 on cold start,
+ *  use the hard-coded fallback so the first paint is never broken. */
 function applyInsets(insets: { top: number; bottom: number; left: number; right: number }) {
+  const top    = insets.top    > 0 ? insets.top    : FALLBACK_TOP;
+  const bottom = insets.bottom > 0 ? insets.bottom : FALLBACK_BOTTOM;
+  const left   = insets.left   > 0 ? insets.left   : 0;
+  const right  = insets.right  > 0 ? insets.right  : 0;
+
   const r = document.documentElement;
-  r.style.setProperty('--safe-area-top',    `${insets.top}px`);
-  r.style.setProperty('--safe-area-bottom', `${insets.bottom}px`);
-  r.style.setProperty('--safe-area-left',    `${insets.left}px`);
-  r.style.setProperty('--safe-area-right',   `${insets.right}px`);
+  r.style.setProperty('--safe-area-top',    `${top}px`);
+  r.style.setProperty('--safe-area-bottom', `${bottom}px`);
+  r.style.setProperty('--safe-area-left',   `${left}px`);
+  r.style.setProperty('--safe-area-right',  `${right}px`);
+
   // Force repaint so WebKit recalculates layout with the new values
   forceTabBarRepaint();
 }
@@ -59,11 +70,14 @@ function AppContent() {
         });
         removeListener = () => listener.remove();
       } catch {
-        // Plugin unavailable — browser / preview environment
+        // Plugin unavailable — apply fallback defaults
+        if (!cancelled) {
+          applyInsets({ top: 0, bottom: 0, left: 0, right: 0 });
+        }
       }
     }
 
-    // 3. Re-read when returning from background (cold-start equivalent on iOS)
+    // 3. Re-read when returning from background
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         initSafeArea();
@@ -83,7 +97,6 @@ function AppContent() {
 
   return (
     <div className="app-root">
-      {/* Main Content Area — all pages常驻DOM，CSS切换opacity/visibility，无闪黑 */}
       <main className="app-main">
         {PAGES.map(({ key, component: Page }) => (
           <div key={key} className={`page-layer ${activeTab === key ? 'active' : ''}`}>
@@ -91,11 +104,7 @@ function AppContent() {
           </div>
         ))}
       </main>
-
-      {/* Bottom Tab Bar — fixed at bottom */}
       <BottomTabBar activeTab={activeTab} onTabChange={setActiveTab} />
-
-      {/* Add Transaction Sheet — global overlay outside scroll context */}
       <AddTransactionSheet />
     </div>
   );
