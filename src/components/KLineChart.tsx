@@ -316,19 +316,22 @@ export function KLineChart({ data }: KLineChartProps) {
     const savedMax = _prevMax;
 
     try {
-      // Build temporary canvas: every data point gets at least 2px width,
-      // minBarPx=2 guarantees groupSize stays 1 (no aggregation)
+      // High-DPR export: use device DPR (up to 3×) for crisp lines/text.
+      // iOS Safari canvas width limit ~8192 physical px, so clamp logical width accordingly.
       const PAD = { left: 56, right: 12 };
-      const targetHeight = 320;
-      const targetWidth = Math.min(
-        12000,
-        Math.max(300, data.length * 2 + PAD.left + PAD.right)
-      );
+      const targetHeight = 480;                  // taller for sharper text & curves
+      const minBarPx = 3;                        // logical px per K-bar
+      const actualDpr = Math.min(3, window.devicePixelRatio || 1);
+      const MAX_PHYS_W = 8192;                   // conservative iOS canvas width limit
+
+      let targetWidth = data.length * minBarPx + PAD.left + PAD.right;
+      if (targetWidth * actualDpr > MAX_PHYS_W) {
+        targetWidth = Math.floor(MAX_PHYS_W / actualDpr);
+      }
 
       const tempCanvas = document.createElement('canvas');
-      const dpr = 1;
-      tempCanvas.width = targetWidth * dpr;
-      tempCanvas.height = targetHeight * dpr;
+      tempCanvas.width = targetWidth * actualDpr;
+      tempCanvas.height = targetHeight * actualDpr;
 
       const ctx = tempCanvas.getContext('2d');
       if (!ctx) return;
@@ -336,8 +339,8 @@ export function KLineChart({ data }: KLineChartProps) {
       const fullView: ViewState = { offset: 0, count: data.length };
       drawChart(ctx, data, targetWidth, targetHeight, fullView, {
         noSmooth: true,
-        minBarPx: 2,   // ensure groupSize = 1 (no internal aggregation)
-        dpr: 1,        // fixed 1x to avoid coordinate overflow
+        minBarPx,
+        dpr: actualDpr,
       });
 
       // Export PNG
