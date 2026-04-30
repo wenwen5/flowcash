@@ -27,7 +27,7 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
   };
 
   return (
-    <div className="tab-bar flex items-center justify-around select-none pt-2">
+    <div className="tab-bar flex items-start justify-around select-none">
       {tabs.slice(0, 2).map(tab => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.key;
@@ -35,7 +35,7 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
           <button
             key={tab.key}
             onClick={() => onTabChange(tab.key)}
-            className="flex flex-col items-center justify-center gap-0.5 w-16 h-14 transition-all duration-200"
+            className="flex flex-col items-center justify-start w-16 h-[90px] pt-2 transition-all duration-200"
           >
             <Icon
               size={24}
@@ -52,13 +52,17 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
         );
       })}
 
-      {/* Center Add Button */}
+      {/* Center Add Button — large touch target, visual circle inside */}
       <button
         onClick={handleAdd}
-        className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg -mt-6 active:scale-95 transition-transform duration-150"
-        style={{ backgroundColor: brand, boxShadow: `0 4px 16px ${brand}4D` }}
+        className="flex flex-col items-center justify-start w-16 h-[90px] pt-2 -mt-6"
       >
-        <Plus size={28} strokeWidth={2.5} className="text-white" />
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform duration-150 shrink-0"
+          style={{ backgroundColor: brand, boxShadow: `0 4px 16px ${brand}4D` }}
+        >
+          <Plus size={28} strokeWidth={2.5} className="text-white" />
+        </div>
       </button>
 
       {tabs.slice(2).map(tab => {
@@ -68,7 +72,7 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
           <button
             key={tab.key}
             onClick={() => onTabChange(tab.key)}
-            className="flex flex-col items-center justify-center gap-0.5 w-16 h-14 transition-all duration-200"
+            className="flex flex-col items-center justify-start w-16 h-[90px] pt-2 transition-all duration-200"
           >
             <Icon
               size={24}
