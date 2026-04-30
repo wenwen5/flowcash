@@ -16,61 +16,39 @@ const PAGES: { key: TabKey; component: React.FC }[] = [
   { key: 'profile', component: ProfilePage },
 ];
 
-/**
- * Check whether the CSS variable already has a non-zero pixel value
- * (injected by the iOS Swift layer at startup).
- */
-function getCssVarValue(name: string): number {
-  const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  if (!val) return 0;
-  const px = parseFloat(val.replace('px', ''));
-  return isNaN(px) ? 0 : px;
-}
-
 function AppContent() {
   const [activeTab, setActiveTab] = useState<TabKey>('home');
 
+  // Safe-area refinement via Capacitor plugin (runs after React mount).
+  // The HTML <script> already set defaults and forced a recalculation,
+  // so this only fine-tunes the exact native values.
   useEffect(() => {
     let cancelled = false;
 
-    async function initSafeArea() {
-      // Wait a tick so any Swift-injected values are already present.
-      await new Promise(r => setTimeout(r, 100));
-      if (cancelled) return;
-
-      const bottom = getCssVarValue('--safe-area-bottom');
-
-      // If Swift already injected a real value (> 0 on notched iPhones),
-      // we do nothing — Swift is the source of truth.
-      if (bottom > 0) {
-        return;
-      }
-
-      // Otherwise fall back to the JS plugin (browser / preview environments).
+    async function refineSafeArea() {
       try {
         const { SafeArea } = await import('capacitor-plugin-safe-area');
         const { insets } = await SafeArea.getSafeAreaInsets();
         if (cancelled) return;
 
-        const b = Math.round(insets.bottom);
-        if (b > 0) {
-          document.documentElement.style.setProperty('--safe-area-bottom', `${b}px`);
-          document.documentElement.style.setProperty('--safe-area-top', `${Math.round(insets.top)}px`);
-        }
+        const r = document.documentElement;
+        r.style.setProperty('--safe-area-bottom', `${Math.round(insets.bottom)}px`);
+        r.style.setProperty('--safe-area-top',    `${Math.round(insets.top)}px`);
+        r.style.setProperty('--safe-area-left',   `${Math.round(insets.left)}px`);
+        r.style.setProperty('--safe-area-right',  `${Math.round(insets.right)}px`);
 
-        // Listen for orientation changes
         await SafeArea.addListener('safeAreaChanged', (data) => {
           if (cancelled) return;
           const ins = data.insets;
-          document.documentElement.style.setProperty('--safe-area-bottom', `${Math.round(ins.bottom)}px`);
-          document.documentElement.style.setProperty('--safe-area-top', `${Math.round(ins.top)}px`);
+          r.style.setProperty('--safe-area-bottom', `${Math.round(ins.bottom)}px`);
+          r.style.setProperty('--safe-area-top',    `${Math.round(ins.top)}px`);
         });
       } catch {
-        // Plugin unavailable — CSS env() fallback already active in :root
+        // Plugin unavailable — HTML script + Swift injection are enough.
       }
     }
 
-    initSafeArea();
+    refineSafeArea();
     return () => { cancelled = true; };
   }, []);
 
