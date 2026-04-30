@@ -61,9 +61,13 @@ function drawChart(
   width: number,
   height: number,
   view: ViewState,
-  noSmooth = false,
+  opts?: {
+    noSmooth?: boolean;
+    minBarPx?: number;
+    dpr?: number;
+  },
 ) {
-  const dpr = window.devicePixelRatio || 1;
+  const { noSmooth = false, minBarPx = 8, dpr = window.devicePixelRatio || 1 } = opts || {};
   const padding = { top: 12, right: 12, bottom: 32, left: 56 };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
@@ -73,7 +77,6 @@ function drawChart(
   ctx.scale(dpr, dpr);
 
   // Decide internal grouping based on canvas width
-  const minBarPx = 4; // minimum pixel width per bar including gap
   const maxFitBars = Math.max(5, Math.floor(chartW / minBarPx));
   const groupSize = view.count > maxFitBars ? Math.ceil(view.count / maxFitBars) : 1;
 
@@ -313,32 +316,37 @@ export function KLineChart({ data }: KLineChartProps) {
     const savedMax = _prevMax;
 
     try {
-      // Build temporary canvas sized to fit every data point (no aggregation)
-      const padding = { top: 12, right: 12, bottom: 32, left: 56 };
-      const targetChartW = data.length * 4; // minBarPx=4, so groupSize stays 1
-      const targetWidth = Math.min(12000, Math.max(300, targetChartW + padding.left + padding.right));
+      // Build temporary canvas: every data point gets at least 2px width,
+      // minBarPx=2 guarantees groupSize stays 1 (no aggregation)
+      const PAD = { left: 56, right: 12 };
       const targetHeight = 320;
+      const targetWidth = Math.min(
+        12000,
+        Math.max(300, data.length * 2 + PAD.left + PAD.right)
+      );
 
       const tempCanvas = document.createElement('canvas');
-      const dpr = 1; // 1x is enough and keeps dimensions safe
+      const dpr = 1;
       tempCanvas.width = targetWidth * dpr;
       tempCanvas.height = targetHeight * dpr;
-      tempCanvas.style.width = `${targetWidth}px`;
-      tempCanvas.style.height = `${targetHeight}px`;
 
       const ctx = tempCanvas.getContext('2d');
       if (!ctx) return;
 
       const fullView: ViewState = { offset: 0, count: data.length };
-      drawChart(ctx, data, targetWidth, targetHeight, fullView, true);
+      drawChart(ctx, data, targetWidth, targetHeight, fullView, {
+        noSmooth: true,
+        minBarPx: 2,   // ensure groupSize = 1 (no internal aggregation)
+        dpr: 1,        // fixed 1x to avoid coordinate overflow
+      });
 
       // Export PNG
       const dataUrl = tempCanvas.toDataURL('image/png');
       const base64 = dataUrl.split(',')[1];
       const byteString = atob(base64);
       const buffer = new ArrayBuffer(byteString.length);
-      const view = new Uint8Array(buffer);
-      for (let i = 0; i < byteString.length; i++) view[i] = byteString.charCodeAt(i);
+      const viewArr = new Uint8Array(buffer);
+      for (let i = 0; i < byteString.length; i++) viewArr[i] = byteString.charCodeAt(i);
       const blob = new Blob([buffer], { type: 'image/png' });
 
       const fileName = `flowcash_chart_${new Date().toISOString().slice(0, 10)}.png`;
@@ -367,7 +375,7 @@ export function KLineChart({ data }: KLineChartProps) {
 
         await Share.share({
           title: 'FlowCash 图表',
-          text: '净资产趋势图',
+          text: `净资产趋势图 (${data.length}天)`,
           url: fileUri.uri,
           dialogTitle: '保存图表',
         });
