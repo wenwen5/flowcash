@@ -132,8 +132,10 @@
     transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
     max-height: 92vh;
+    max-height: calc(92vh - env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .bottom-sheet.open .bottom-sheet-panel {
@@ -174,6 +176,14 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .gpu-layer {
