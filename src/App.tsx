@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { AppProvider } from '@/context/AppContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { AddTransactionSheet } from '@/components/AddTransactionSheet';
 import { HomePage } from '@/pages/HomePage';
@@ -9,58 +9,31 @@ import { AnalyticsPage } from '@/pages/AnalyticsPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import type { TabKey } from '@/types';
 
-const pageVariants = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
-};
-
-const pageTransition = {
-  duration: 0.2,
-  ease: [0.32, 0.72, 0, 1] as const,
-};
+const PAGES: { key: TabKey; component: React.FC }[] = [
+  { key: 'home', component: HomePage },
+  { key: 'transactions', component: TransactionsPage },
+  { key: 'analytics', component: AnalyticsPage },
+  { key: 'profile', component: ProfilePage },
+];
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<TabKey>('home');
 
-  const renderPage = () => {
-    switch (activeTab) {
-      case 'home':
-        return <HomePage />;
-      case 'transactions':
-        return <TransactionsPage />;
-      case 'analytics':
-        return <AnalyticsPage />;
-      case 'profile':
-        return <ProfilePage />;
-      default:
-        return <HomePage />;
-    }
-  };
-
   return (
-    <div className="h-screen w-full flex flex-col bg-black overflow-hidden relative">
-      {/* Main Content */}
-      <div className="flex-1 relative overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            variants={pageVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={pageTransition}
-            className="absolute inset-0"
-          >
-            {renderPage()}
-          </motion.div>
-        </AnimatePresence>
-      </div>
+    <div className="app-root">
+      {/* Main Content Area - all pages常驻DOM，CSS切换opacity/visibility，无闪黑 */}
+      <main className="app-main">
+        {PAGES.map(({ key, component: Page }) => (
+          <div key={key} className={`page-layer ${activeTab === key ? 'active' : ''}`}>
+            <Page />
+          </div>
+        ))}
+      </main>
 
-      {/* Bottom Tab Bar */}
+      {/* Bottom Tab Bar - fixed at bottom */}
       <BottomTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Add Transaction Sheet - Global Overlay */}
+      {/* Add Transaction Sheet - global overlay outside scroll context */}
       <AddTransactionSheet />
     </div>
   );
@@ -68,9 +41,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <ThemeProvider>
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </ThemeProvider>
   );
 }
 

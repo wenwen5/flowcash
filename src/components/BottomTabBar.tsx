@@ -1,5 +1,6 @@
 import { Home, List, BarChart3, User, Plus } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useTheme } from '@/context/ThemeContext';
 import type { TabKey } from '@/types';
 
 const tabs: { key: TabKey; label: string; icon: typeof Home }[] = [
@@ -16,6 +17,7 @@ interface BottomTabBarProps {
 
 export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
   const { dispatch } = useApp();
+  const brand = useTheme();
 
   const handleAdd = () => {
     try {
@@ -25,8 +27,7 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
   };
 
   return (
-    <div className="shrink-0 h-20 bg-white/90 backdrop-blur-xl border-t border-black/5 z-50 flex items-center justify-around pb-0 select-none"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <div className="tab-bar flex items-center justify-around select-none h-20">
       {tabs.slice(0, 2).map(tab => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.key;
@@ -39,9 +40,12 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
             <Icon
               size={24}
               strokeWidth={isActive ? 2.5 : 1.5}
-              className={isActive ? 'text-[#34C759]' : 'text-[#8A8A8E]'}
+              style={{ color: isActive ? brand : '#8A8A8E' }}
             />
-            <span className={`text-[10px] ${isActive ? 'text-[#34C759] font-semibold' : 'text-[#8A8A8E]'}`}>
+            <span
+              className="text-[10px] font-medium"
+              style={{ color: isActive ? brand : '#8A8A8E', fontWeight: isActive ? 600 : 400 }}
+            >
               {tab.label}
             </span>
           </button>
@@ -51,7 +55,8 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
       {/* Center Add Button */}
       <button
         onClick={handleAdd}
-        className="w-14 h-14 rounded-full bg-[#34C759] flex items-center justify-center shadow-lg shadow-[#34C759]/30 -mt-6 active:scale-95 transition-transform duration-150"
+        className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg -mt-6 active:scale-95 transition-transform duration-150"
+        style={{ backgroundColor: brand, boxShadow: `0 4px 16px ${brand}4D` }}
       >
         <Plus size={28} strokeWidth={2.5} className="text-white" />
       </button>
@@ -68,9 +73,12 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
             <Icon
               size={24}
               strokeWidth={isActive ? 2.5 : 1.5}
-              className={isActive ? 'text-[#34C759]' : 'text-[#8A8A8E]'}
+              style={{ color: isActive ? brand : '#8A8A8E' }}
             />
-            <span className={`text-[10px] ${isActive ? 'text-[#34C759] font-semibold' : 'text-[#8A8A8E]'}`}>
+            <span
+              className="text-[10px] font-medium"
+              style={{ color: isActive ? brand : '#8A8A8E', fontWeight: isActive ? 600 : 400 }}
+            >
               {tab.label}
             </span>
           </button>

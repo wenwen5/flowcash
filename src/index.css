@@ -4,25 +4,22 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 10%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 10%;
-    --primary: 135 65% 50%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 10%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 10%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --ring: 135 65% 50%;
+    --brand: #34C759;
+    --brand-light: rgba(52, 199, 89, 0.15);
+    --brand-shadow: rgba(52, 199, 89, 0.30);
+    --bg-page: #F9FAFB;
+    --bg-card: #FFFFFF;
+    --bg-input: #F9FAFB;
+    --bg-surface: #F2F2F7;
+    --text-primary: #1A1A1A;
+    --text-secondary: #8A8A8E;
+    --text-tertiary: #C7C7CC;
+    --divider: #F0F0F0;
+    --danger: #FF3B30;
+    --danger-light: rgba(255, 59, 48, 0.15);
+    --success: #34C759;
+    --expense: #FF3B30;
+    --income: #34C759;
     --radius: 0.75rem;
   }
 
@@ -31,16 +28,142 @@
     touch-action: manipulation;
   }
 
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-    overscroll-behavior-y: none;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #F9FAFB;
-    color: #1A1A1A;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
+    overscroll-behavior-y: none;
+  }
+}
+
+@layer components {
+  .app-root {
+    height: 100dvh;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .app-main {
+    flex: 1 1 auto;
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .page-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    will-change: opacity, visibility;
+    pointer-events: none;
+    transform: translateZ(0);
+  }
+
+  .page-layer.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .tab-bar {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 50;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    transform: translateZ(0);
+  }
+
+  .bottom-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    pointer-events: none;
+    will-change: opacity;
+  }
+
+  .bottom-sheet.open {
+    pointer-events: auto;
+  }
+
+  .bottom-sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    will-change: opacity;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  .bottom-sheet.open .bottom-sheet-backdrop {
+    opacity: 1;
+  }
+
+  .bottom-sheet-panel {
+    position: relative;
+    background: var(--bg-card);
+    border-radius: 1.5rem 1.5rem 0 0;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+    transform: translateY(100%) translateZ(0);
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    will-change: transform;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bottom-sheet.open .bottom-sheet-panel {
+    transform: translateY(0) translateZ(0);
+  }
+
+  .success-burst {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    border-radius: 1.5rem 1.5rem 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: scale(0);
+    transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+    will-change: transform;
+  }
+
+  .success-burst.show {
+    transform: scale(1);
+  }
+
+  .success-burst-inner {
+    transform: scale(0);
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1) 0.15s;
+  }
+
+  .success-burst.show .success-burst-inner {
+    transform: scale(1);
   }
 }
 
@@ -53,15 +176,8 @@
     scrollbar-width: none;
   }
 
-  .safe-area-top {
-    padding-top: env(safe-area-inset-top, 0px);
-  }
-
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  .text-shadow-sm {
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  .gpu-layer {
+    transform: translateZ(0);
+    will-change: transform, opacity;
   }
 }

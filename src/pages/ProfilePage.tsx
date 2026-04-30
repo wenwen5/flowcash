@@ -2,9 +2,10 @@ import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   User, Settings, Bell, ChevronRight,
-  Moon, Trash2, Download, Upload, Tags, Camera, Pencil
+  Trash2, Download, Upload, Tags, Pencil
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useThemeFull, PRESET_COLORS } from '@/context/ThemeContext';
 import { CategoryManageSheet } from '@/components/CategoryManageSheet';
 
 const PROFILE_KEY = 'flowcash_profile_v1';
@@ -30,34 +31,28 @@ function saveProfile(data: ProfileData) {
 }
 
 function formatAdaptiveAmount(amount: number): string {
-  if (amount < 1000) {
-    return `¥${amount.toFixed(2)}`;
-  } else if (amount < 10000) {
-    return `${(amount / 1000).toFixed(2)}千`;
-  } else {
-    return `${(amount / 10000).toFixed(2)}万`;
-  }
+  if (amount < 1000) return `¥${amount.toFixed(2)}`;
+  if (amount < 10000) return `${(amount / 1000).toFixed(2)}千`;
+  return `${(amount / 10000).toFixed(2)}万`;
 }
 
 export function ProfilePage() {
   const { state, addTransaction } = useApp();
+  const { brand, setBrand } = useThemeFull();
   const [profile, setProfile] = useState<ProfileData>(loadProfile);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [importStatus, setImportStatus] = useState<string>('');
+  const [importStatus, setImportStatus] = useState('');
   const [categoryManageOpen, setCategoryManageOpen] = useState(false);
   const [editingField, setEditingField] = useState<null | 'nickname' | 'bio'>(null);
   const [editValue, setEditValue] = useState('');
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const totalTransactions = state.transactions.length;
-  const totalExpense = state.transactions
-    .filter(t => t.type === 'expense')
-    .reduce((s, t) => s + t.amount, 0);
-  const totalIncome = state.transactions
-    .filter(t => t.type === 'income')
-    .reduce((s, t) => s + t.amount, 0);
+  const totalExpense = state.transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const totalIncome = state.transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
 
   const updateProfile = (patch: Partial<ProfileData>) => {
     const next = { ...profile, ...patch };
@@ -65,9 +60,7 @@ export function ProfilePage() {
     saveProfile(next);
   };
 
-  const handleAvatarClick = () => {
-    avatarInputRef.current?.click();
-  };
+  const handleAvatarClick = () => avatarInputRef.current?.click();
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -102,74 +95,91 @@ export function ProfilePage() {
     }
   };
 
-  // Export CSV
-  const handleExport = () => {
-    const headers = ['date', 'amount', 'category', 'type', 'note'];
-    const rows = state.transactions.map(t => [
-      t.date,
-      t.amount.toFixed(2),
-      t.category,
-      t.type,
-      t.note || ''
-    ]);
-    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `flowcash_export_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setImportStatus('导出成功');
+  // ===== Capacitor Export =====
+  const handleExport = async () => {
+    try {
+      const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+      const { Share } = await import('@capacitor/share');
+
+      const headers = ['date', 'amount', 'category', 'type', 'note'];
+      const rows = state.transactions.map(t => [
+        t.date, t.amount.toFixed(2), t.category, t.type, t.note || ''
+      ]);
+      const csv = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+
+      const fileName = `flowcash_export_${new Date().toISOString().slice(0, 10)}.csv`;
+
+      await Filesystem.writeFile({
+        path: fileName,
+        data: csv,
+        directory: Directory.Cache,
+        encoding: Encoding.UTF8,
+      });
+
+      const fileUri = await Filesystem.getUri({
+        path: fileName,
+        directory: Directory.Cache,
+      });
+
+      await Share.share({
+        title: 'FlowCash 导出',
+        text: '记账数据导出',
+        url: fileUri.uri,
+        dialogTitle: '保存 CSV 文件',
+      });
+
+      setImportStatus('导出成功');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      // Fallback: browser download
+      const headers = ['date', 'amount', 'category', 'type', 'note'];
+      const rows = state.transactions.map(t => [
+        t.date, t.amount.toFixed(2), t.category, t.type, t.note || ''
+      ]);
+      const csv = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `flowcash_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setImportStatus('已下载');
+    }
     setTimeout(() => setImportStatus(''), 2000);
   };
 
-  // Import CSV
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
         const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) {
-          setImportStatus('文件为空');
-          setTimeout(() => setImportStatus(''), 2000);
-          return;
-        }
-
+        if (lines.length < 2) { setImportStatus('文件为空'); setTimeout(() => setImportStatus(''), 2000); return; }
         const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
         const dateIdx = headers.indexOf('date');
         const amountIdx = headers.indexOf('amount');
         const categoryIdx = headers.indexOf('category');
         const typeIdx = headers.indexOf('type');
         const noteIdx = headers.indexOf('note');
-
         if (dateIdx === -1 || amountIdx === -1 || categoryIdx === -1 || typeIdx === -1) {
-          setImportStatus('格式错误');
-          setTimeout(() => setImportStatus(''), 2000);
-          return;
+          setImportStatus('格式错误'); setTimeout(() => setImportStatus(''), 2000); return;
         }
-
         let imported = 0;
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(',');
           if (cols.length < Math.max(dateIdx, amountIdx, categoryIdx, typeIdx) + 1) continue;
-
-          const amount = parseFloat(cols[amountIdx]);
+          const numAmount = parseFloat(cols[amountIdx]);
           const type = cols[typeIdx].trim() as 'expense' | 'income';
-          if (isNaN(amount) || amount <= 0 || !['expense', 'income'].includes(type)) continue;
-
+          if (isNaN(numAmount) || numAmount <= 0 || !['expense', 'income'].includes(type)) continue;
           addTransaction({
-            amount,
+            amount: numAmount,
             category: cols[categoryIdx].trim(),
             date: cols[dateIdx].trim(),
             type,
@@ -177,13 +187,9 @@ export function ProfilePage() {
           });
           imported++;
         }
-
         setImportStatus(`成功导入 ${imported} 条`);
         setTimeout(() => setImportStatus(''), 2000);
-      } catch {
-        setImportStatus('导入失败');
-        setTimeout(() => setImportStatus(''), 2000);
-      }
+      } catch { setImportStatus('导入失败'); setTimeout(() => setImportStatus(''), 2000); }
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -201,9 +207,9 @@ export function ProfilePage() {
     }[];
   }[] = [
     {
-      title: '偏好设置',
+      title: '个性化',
       items: [
-        { icon: Moon, label: '深色模式', value: '跟随系统', color: '#5856D6', onClick: undefined },
+        { icon: Settings, label: '主题配色', value: '', color: brand, onClick: () => setShowColorPicker(true) },
         { icon: Bell, label: '记账提醒', value: '已开启', color: '#FF9500', onClick: undefined },
       ],
     },
@@ -211,7 +217,7 @@ export function ProfilePage() {
       title: '数据管理',
       items: [
         { icon: Tags, label: '类别管理', value: '', color: '#5856D6', onClick: () => setCategoryManageOpen(true) },
-        { icon: Download, label: '导出数据', value: 'CSV格式', color: '#34C759', onClick: handleExport },
+        { icon: Download, label: '导出数据', value: 'CSV', color: '#34C759', onClick: handleExport },
         { icon: Upload, label: '导入数据', value: '', color: '#007AFF', onClick: handleImportClick },
         { icon: Trash2, label: '清除数据', value: '', color: '#FF3B30', danger: true, onClick: handleClearData },
       ],
@@ -225,44 +231,33 @@ export function ProfilePage() {
   ];
 
   return (
-    <div className="flex flex-col h-full bg-[#F9FAFB] overflow-hidden">
-      {/* Hidden file inputs */}
+    <div className="flex flex-col h-full" style={{ backgroundColor: '#F9FAFB' }}>
       <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileChange} className="hidden" />
       <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
 
-      {/* Header */}
-      <div className="shrink-0 bg-white border-b border-[#F0F0F0] px-4 pt-3 pb-4 safe-area-top">
-        <h1 className="text-xl font-bold text-[#1A1A1A]">我的</h1>
+      <div className="shrink-0 px-4 pt-3 pb-4" style={{ backgroundColor: '#fff', borderBottom: '1px solid #F0F0F0' }}>
+        <h1 className="text-xl font-bold" style={{ color: '#1A1A1A' }}>我的</h1>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto no-scrollbar relative">
-        {/* User Profile Card */}
+        {/* Profile Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="mx-4 mt-4 bg-gradient-to-br from-[#34C759] to-[#30D158] rounded-2xl p-5 shadow-lg shadow-[#34C759]/20"
+          className="mx-4 mt-4 rounded-2xl p-5 shadow-lg"
+          style={{ background: `linear-gradient(135deg, ${brand}, ${brand}DD)` }}
         >
           <div className="flex items-center gap-4">
-            {/* Avatar */}
-            <button
-              onClick={handleAvatarClick}
-              className="relative w-16 h-16 rounded-full overflow-hidden shrink-0 active:scale-95 transition-transform"
-            >
+            <button onClick={handleAvatarClick} className="relative w-16 h-16 rounded-full overflow-hidden shrink-0 active:scale-95 transition-transform">
               {profile.avatar ? (
                 <img src={profile.avatar} alt="avatar" className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full bg-white/20 flex items-center justify-center">
+                <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
                   <User size={32} className="text-white" />
                 </div>
               )}
-              <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 active:opacity-100 transition-opacity">
-                <Camera size={18} className="text-white" />
-              </div>
             </button>
-
-            {/* Nickname & Bio */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 {editingField === 'nickname' ? (
@@ -302,18 +297,16 @@ export function ProfilePage() {
               </div>
             </div>
           </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20">
+          <div className="grid grid-cols-3 gap-4 mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.2)' }}>
             <div className="text-center">
               <p className="text-xl font-bold text-white">{totalTransactions}</p>
               <p className="text-white/70 text-xs mt-0.5">总笔数</p>
             </div>
-            <div className="text-center border-l border-white/20">
+            <div className="text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.2)' }}>
               <p className="text-xl font-bold text-white">{formatAdaptiveAmount(totalExpense)}</p>
               <p className="text-white/70 text-xs mt-0.5">总支出</p>
             </div>
-            <div className="text-center border-l border-white/20">
+            <div className="text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.2)' }}>
               <p className="text-xl font-bold text-white">{formatAdaptiveAmount(totalIncome)}</p>
               <p className="text-white/70 text-xs mt-0.5">总收入</p>
             </div>
@@ -329,42 +322,37 @@ export function ProfilePage() {
             transition={{ delay: 0.2 + si * 0.1 }}
             className="mt-6 px-4"
           >
-            <h3 className="text-xs font-semibold text-[#8A8A8E] uppercase tracking-wide mb-2 px-1">
+            <h3 className="text-xs font-semibold uppercase tracking-wide mb-2 px-1" style={{ color: '#8A8A8E' }}>
               {section.title}
             </h3>
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="rounded-2xl shadow-sm overflow-hidden" style={{ backgroundColor: '#fff' }}>
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const isClearData = item.label === '清除数据';
                 const isActive = isClearData && showClearConfirm;
-
                 return (
                   <button
                     key={item.label}
                     onClick={item.onClick}
-                    className={`w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-[#F0F0F0] last:border-b-0 active:bg-[#F9FAFB] transition-colors ${
-                      isActive ? 'bg-[#FF3B30]/5' : ''
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${isActive ? '' : ''}`}
+                    style={{
+                      borderBottom: '1px solid #F0F0F0',
+                      backgroundColor: isActive ? 'rgba(255,59,48,0.05)' : 'transparent',
+                    }}
                   >
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: item.danger && isActive ? '#FF3B30' : `${item.color}15` }}
+                      style={{ backgroundColor: isActive ? '#FF3B30' : `${item.color}15` }}
                     >
-                      <Icon
-                        size={16}
-                        style={{ color: item.danger && isActive ? '#fff' : item.color }}
-                        strokeWidth={1.5}
-                      />
+                      <Icon size={16} style={{ color: isActive ? '#fff' : item.color }} strokeWidth={1.5} />
                     </div>
-                    <span className={`flex-1 text-sm font-medium ${
-                      item.danger ? (isActive ? 'text-[#FF3B30]' : 'text-[#FF3B30]') : 'text-[#1A1A1A]'
-                    }`}>
+                    <span className="flex-1 text-sm font-medium" style={{ color: item.danger ? (isActive ? '#FF3B30' : '#FF3B30') : '#1A1A1A' }}>
                       {isActive ? '再次点击确认清除' : item.label}
                     </span>
                     {item.value && (
-                      <span className="text-sm text-[#8A8A8E]">{item.value}</span>
+                      <span className="text-sm" style={{ color: '#8A8A8E' }}>{item.value}</span>
                     )}
-                    <ChevronRight size={16} className="text-[#C7C7CC]" />
+                    <ChevronRight size={16} style={{ color: '#C7C7CC' }} />
                   </button>
                 );
               })}
@@ -379,20 +367,73 @@ export function ProfilePage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="absolute -top-2 left-1/2 -translate-x-1/2 px-4 py-2 bg-[#1A1A1A] text-white text-sm rounded-full whitespace-nowrap"
+              className="absolute -top-2 left-1/2 -translate-x-1/2 px-4 py-2 text-white text-sm rounded-full whitespace-nowrap"
+              style={{ backgroundColor: '#1A1A1A' }}
             >
               {importStatus}
             </motion.div>
           )}
-          <p className="text-xs text-[#C7C7CC]">FlowCash 简易记账</p>
-          <p className="text-xs text-[#C7C7CC] mt-0.5">数据仅存储在本地设备</p>
+          <p className="text-xs" style={{ color: '#C7C7CC' }}>FlowCash 简易记账</p>
+          <p className="text-xs mt-0.5" style={{ color: '#C7C7CC' }}>数据仅存储在本地设备</p>
         </div>
-        {/* Category Manage Sheet */}
-        <CategoryManageSheet
-          open={categoryManageOpen}
-          onClose={() => setCategoryManageOpen(false)}
-        />
       </div>
+
+      {/* Color Picker Modal */}
+      {showColorPicker && (
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+          <div className="absolute inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setShowColorPicker(false)} />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="relative rounded-t-3xl p-6"
+            style={{ backgroundColor: '#fff' }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold" style={{ color: '#1A1A1A' }}>主题配色</h3>
+              <button onClick={() => setShowColorPicker(false)} className="w-8 h-8 flex items-center justify-center">
+                <span className="text-2xl" style={{ color: '#8A8A8E' }}>&times;</span>
+              </button>
+            </div>
+            <p className="text-sm mb-4" style={{ color: '#8A8A8E' }}>选择你喜欢的品牌色</p>
+            <div className="flex flex-wrap gap-3">
+              {PRESET_COLORS.map(c => (
+                <button
+                  key={c}
+                  onClick={() => { setBrand(c); setShowColorPicker(false); }}
+                  className="w-10 h-10 rounded-full transition-transform active:scale-90"
+                  style={{
+                    backgroundColor: c,
+                    boxShadow: brand === c ? `0 0 0 3px #fff, 0 0 0 5px ${c}` : 'none',
+                  }}
+                />
+              ))}
+            </div>
+            <div className="mt-4">
+              <p className="text-xs mb-2" style={{ color: '#8A8A8E' }}>自定义颜色</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={brand}
+                  onChange={e => setBrand(e.target.value)}
+                  className="w-12 h-12 rounded-xl border-0 p-0 cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={brand}
+                  onChange={e => setBrand(e.target.value)}
+                  className="flex-1 h-12 px-4 rounded-xl text-sm font-medium outline-none"
+                  style={{ backgroundColor: '#F9FAFB', color: '#1A1A1A' }}
+                  placeholder="#34C759"
+                />
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      <CategoryManageSheet open={categoryManageOpen} onClose={() => setCategoryManageOpen(false)} />
     </div>
   );
 }

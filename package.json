@@ -13,6 +13,8 @@
     "ios:open": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/share": "^6.0.4",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
