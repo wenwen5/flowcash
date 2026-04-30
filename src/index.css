@@ -28,21 +28,14 @@
     touch-action: manipulation;
   }
 
-  html {
-    height: 100%;
-    height: -webkit-fill-available;
-    overflow: hidden;
-  }
-
-  body {
-    min-height: 100vh;
-    min-height: -webkit-fill-available;
+  html, body {
+    margin: 0;
+    padding: 0;
     overflow: hidden;
   }
 
   #root {
     height: 100%;
-    overflow: hidden;
   }
 
   body {
@@ -59,14 +52,16 @@
 }
 
 @layer components {
-  /* ===== Root Layout ===== */
+  /* ===== Root Layout =====
+     position: fixed + inset: 0 eliminates all 100dvh / -webkit-fill-available
+     calculation differences between cold-start and rotation.
+     The container always exactly covers the visual viewport. */
   .app-root {
-    min-height: 100dvh;
-    min-height: -webkit-fill-available;
+    position: fixed;
+    inset: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    position: relative;
   }
 
   .app-main {
@@ -154,7 +149,7 @@
     transform: translateY(100%) translateZ(0);
     transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
-    max-height: calc(92dvh - 34px);
+    max-height: calc(100% - 34px);
     display: flex;
     flex-direction: column;
     padding-bottom: 34px;
