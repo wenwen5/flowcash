@@ -104,7 +104,7 @@ export function TransactionsPage() {
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: '#F9FAFB' }}>
       {/* Header */}
-      <div className="shrink-0 px-4 pt-3 pb-0" style={{ backgroundColor: '#fff', borderBottom: '1px solid #F0F0F0' }}>
+      <div className="shrink-0 safe-area-top px-4 pt-3 pb-0" style={{ backgroundColor: '#fff', borderBottom: '1px solid #F0F0F0' }}>
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold" style={{ color: '#1A1A1A' }}>流水</h1>
           <button

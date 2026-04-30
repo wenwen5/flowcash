@@ -235,7 +235,7 @@ export function ProfilePage() {
       <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileChange} className="hidden" />
       <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
 
-      <div className="shrink-0 px-4 pt-3 pb-4" style={{ backgroundColor: '#fff', borderBottom: '1px solid #F0F0F0' }}>
+      <div className="shrink-0 safe-area-top px-4 pt-3 pb-4" style={{ backgroundColor: '#fff', borderBottom: '1px solid #F0F0F0' }}>
         <h1 className="text-xl font-bold" style={{ color: '#1A1A1A' }}>我的</h1>
       </div>
 

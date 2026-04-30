@@ -88,13 +88,6 @@
     pointer-events: auto;
   }
 
-  /* Scrollable content inside each page gets bottom padding so the last
-     item is never hidden behind the tab-bar + safe-area. */
-  .page-layer .scroll-content,
-  .page-layer > div > .overflow-y-auto,
-  .page-layer > div > div > .overflow-y-auto {
-    padding-bottom: calc(var(--safe-area-bottom, 0px));
-  }
 
   /* ===== Bottom Tab Bar ===== */
   .tab-bar {
@@ -105,12 +98,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid rgba(0, 0, 0, 0.05);
-    /* CRITICAL: padding-bottom must create enough space for the
-       iOS Home Indicator so buttons sit above it. */
-    padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
-    /* Minimum height guarantees buttons are visible even if the
-       safe-area variable is 0 (e.g. on old devices). */
-    min-height: 64px;
+    padding-bottom: var(--safe-area-bottom, 0px);
     transform: translateZ(0);
   }
 

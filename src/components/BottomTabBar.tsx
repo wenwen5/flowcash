@@ -27,7 +27,7 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
   };
 
   return (
-    <div className="tab-bar flex items-end justify-around select-none pt-2 pb-[env(safe-area-inset-bottom)]">
+    <div className="tab-bar flex items-center justify-around select-none pt-2">
       {tabs.slice(0, 2).map(tab => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.key;
