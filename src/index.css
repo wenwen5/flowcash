@@ -22,11 +22,13 @@
     --income: #34C759;
     --radius: 0.75rem;
 
-    /* Safe-area — injected at runtime by iOS Swift or JS plugin */
-    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-area-top:    env(safe-area-inset-top,    0px);
-    --safe-area-left:   env(safe-area-inset-left,   0px);
-    --safe-area-right:  env(safe-area-inset-right,  0px);
+    /* Hard-coded iPhone safe-area insets */
+    /* Top: iPhone notch / dynamic island ≈ 44-47px, use 44px as safe default */
+    /* Bottom: Home Indicator ≈ 34px */
+    --safe-area-top: 44px;
+    --safe-area-bottom: 34px;
+    --safe-area-left: 0px;
+    --safe-area-right: 0px;
   }
 
   * {
@@ -56,6 +58,7 @@
   /* ===== Root Layout ===== */
   .app-root {
     height: 100dvh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -88,7 +91,6 @@
     pointer-events: auto;
   }
 
-
   /* ===== Bottom Tab Bar ===== */
   .tab-bar {
     flex-shrink: 0;
@@ -98,7 +100,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid rgba(0, 0, 0, 0.05);
-    padding-bottom: var(--safe-area-bottom, 0px);
+    padding-bottom: 34px;
     transform: translateZ(0);
   }
 
@@ -141,10 +143,10 @@
     transform: translateY(100%) translateZ(0);
     transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
-    max-height: calc(92dvh - var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+    max-height: calc(92dvh - 34px);
     display: flex;
     flex-direction: column;
-    padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    padding-bottom: 34px;
   }
 
   .bottom-sheet.open .bottom-sheet-panel {
@@ -185,6 +187,14 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  .safe-area-top {
+    padding-top: 44px;
+  }
+
+  .safe-area-bottom {
+    padding-bottom: 34px;
   }
 
   .gpu-layer {
