@@ -16,6 +16,17 @@ const PAGES: { key: TabKey; component: React.FC }[] = [
   { key: 'profile', component: ProfilePage },
 ];
 
+/**
+ * Check whether the CSS variable already has a non-zero pixel value
+ * (injected by the iOS Swift layer at startup).
+ */
+function getCssVarValue(name: string): number {
+  const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!val) return 0;
+  const px = parseFloat(val.replace('px', ''));
+  return isNaN(px) ? 0 : px;
+}
+
 function AppContent() {
   const [activeTab, setActiveTab] = useState<TabKey>('home');
 
@@ -23,42 +34,39 @@ function AppContent() {
     let cancelled = false;
 
     async function initSafeArea() {
+      // Wait a tick so any Swift-injected values are already present.
+      await new Promise(r => setTimeout(r, 100));
+      if (cancelled) return;
+
+      const bottom = getCssVarValue('--safe-area-bottom');
+
+      // If Swift already injected a real value (> 0 on notched iPhones),
+      // we do nothing — Swift is the source of truth.
+      if (bottom > 0) {
+        return;
+      }
+
+      // Otherwise fall back to the JS plugin (browser / preview environments).
       try {
         const { SafeArea } = await import('capacitor-plugin-safe-area');
         const { insets } = await SafeArea.getSafeAreaInsets();
         if (cancelled) return;
 
-        // Write to our custom CSS variables (used by the app's CSS)
-        document.documentElement.style.setProperty('--safe-area-bottom', `${insets.bottom}px`);
-        document.documentElement.style.setProperty('--safe-area-top', `${insets.top}px`);
-        document.documentElement.style.setProperty('--safe-area-left', `${insets.left}px`);
-        document.documentElement.style.setProperty('--safe-area-right', `${insets.right}px`);
+        const b = Math.round(insets.bottom);
+        if (b > 0) {
+          document.documentElement.style.setProperty('--safe-area-bottom', `${b}px`);
+          document.documentElement.style.setProperty('--safe-area-top', `${Math.round(insets.top)}px`);
+        }
 
-        // Also write to plugin's native variable names for consistency
-        document.documentElement.style.setProperty('--safe-area-inset-bottom', `${insets.bottom}px`);
-        document.documentElement.style.setProperty('--safe-area-inset-top', `${insets.top}px`);
-        document.documentElement.style.setProperty('--safe-area-inset-left', `${insets.left}px`);
-        document.documentElement.style.setProperty('--safe-area-inset-right', `${insets.right}px`);
-
-        // Listen for changes (rotation, etc.)
+        // Listen for orientation changes
         await SafeArea.addListener('safeAreaChanged', (data) => {
+          if (cancelled) return;
           const ins = data.insets;
-          document.documentElement.style.setProperty('--safe-area-bottom', `${ins.bottom}px`);
-          document.documentElement.style.setProperty('--safe-area-top', `${ins.top}px`);
-          document.documentElement.style.setProperty('--safe-area-left', `${ins.left}px`);
-          document.documentElement.style.setProperty('--safe-area-right', `${ins.right}px`);
-          document.documentElement.style.setProperty('--safe-area-inset-bottom', `${ins.bottom}px`);
-          document.documentElement.style.setProperty('--safe-area-inset-top', `${ins.top}px`);
-          document.documentElement.style.setProperty('--safe-area-inset-left', `${ins.left}px`);
-          document.documentElement.style.setProperty('--safe-area-inset-right', `${ins.right}px`);
+          document.documentElement.style.setProperty('--safe-area-bottom', `${Math.round(ins.bottom)}px`);
+          document.documentElement.style.setProperty('--safe-area-top', `${Math.round(ins.top)}px`);
         });
       } catch {
-        // Plugin not available (browser) — fallback to CSS env()
-        if (cancelled) return;
-        document.documentElement.style.setProperty('--safe-area-bottom', 'env(safe-area-inset-bottom, 0px)');
-        document.documentElement.style.setProperty('--safe-area-top', 'env(safe-area-inset-top, 0px)');
-        document.documentElement.style.setProperty('--safe-area-left', 'env(safe-area-inset-left, 0px)');
-        document.documentElement.style.setProperty('--safe-area-right', 'env(safe-area-inset-right, 0px)');
+        // Plugin unavailable — CSS env() fallback already active in :root
       }
     }
 
@@ -68,7 +76,7 @@ function AppContent() {
 
   return (
     <div className="app-root">
-      {/* Main Content Area - all pages常驻DOM，CSS切换opacity/visibility，无闪黑 */}
+      {/* Main Content Area — all pages常驻DOM，CSS切换opacity/visibility，无闪黑 */}
       <main className="app-main">
         {PAGES.map(({ key, component: Page }) => (
           <div key={key} className={`page-layer ${activeTab === key ? 'active' : ''}`}>
@@ -77,10 +85,10 @@ function AppContent() {
         ))}
       </main>
 
-      {/* Bottom Tab Bar - fixed at bottom */}
+      {/* Bottom Tab Bar — fixed at bottom */}
       <BottomTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Add Transaction Sheet - global overlay outside scroll context */}
+      {/* Add Transaction Sheet — global overlay outside scroll context */}
       <AddTransactionSheet />
     </div>
   );

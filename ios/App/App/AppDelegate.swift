@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import WebKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,42 +8,75 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Listen for orientation changes to re-inject safe-area insets
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(orientationDidChange),
+            name: UIDevice.orientationDidChangeNotification,
+            object: nil
+        )
         return true
     }
 
-    func applicationWillResignActive(_ application: UIApplication) {
-        // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-        // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
-    }
-
-    func applicationDidEnterBackground(_ application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
-    }
-
-    func applicationWillEnterForeground(_ application: UIApplication) {
-        // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
-    }
-
+    /// Called every time the app becomes active (launch, foreground, rotation)
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        injectSafeAreaInsets()
     }
 
-    func applicationWillTerminate(_ application: UIApplication) {
-        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+    @objc func orientationDidChange() {
+        // Re-calculate after a short delay so the new layout has settled
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.injectSafeAreaInsets()
+        }
     }
+
+    /// Walk the view hierarchy to find the WKWebView and inject CSS safe-area variables.
+    func injectSafeAreaInsets() {
+        guard let window = self.window else { return }
+
+        let insets = window.safeAreaInsets
+        let bottom = Int(insets.bottom)
+        let top    = Int(insets.top)
+        let left   = Int(insets.left)
+        let right  = Int(insets.right)
+
+        let js = """
+        (function(){
+            var r = document.documentElement;
+            r.style.setProperty('--safe-area-bottom', '\(bottom)px');
+            r.style.setProperty('--safe-area-top',    '\(top)px');
+            r.style.setProperty('--safe-area-left',   '\(left)px');
+            r.style.setProperty('--safe-area-right',  '\(right)px');
+            r.style.setProperty('--safe-area-inset-bottom', '\(bottom)px');
+            r.style.setProperty('--safe-area-inset-top',    '\(top)px');
+            r.style.setProperty('--safe-area-inset-left',   '\(left)px');
+            r.style.setProperty('--safe-area-inset-right',  '\(right)px');
+        })();
+        """
+
+        func findWebView(in view: UIView) -> WKWebView? {
+            if let wv = view as? WKWebView { return wv }
+            for subview in view.subviews {
+                if let wv = findWebView(in: subview) { return wv }
+            }
+            return nil
+        }
+
+        if let webView = findWebView(in: window) {
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    func applicationWillResignActive(_ application: UIApplication) {}
+    func applicationDidEnterBackground(_ application: UIApplication) {}
+    func applicationWillEnterForeground(_ application: UIApplication) {}
+    func applicationWillTerminate(_ application: UIApplication) {}
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        // Called when the app was launched with a url. Feel free to add additional processing here,
-        // but if you want the App API to support tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        // Called when the app was launched with an activity, including Universal Links.
-        // Feel free to add additional processing here, but if you want the App API to support
-        // tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 

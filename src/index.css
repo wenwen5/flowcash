@@ -21,11 +21,12 @@
     --expense: #FF3B30;
     --income: #34C759;
     --radius: 0.75rem;
-    /* safe-area placeholders - populated by JS at runtime */
-    --safe-area-bottom: 0px;
-    --safe-area-top: 0px;
-    --safe-area-left: 0px;
-    --safe-area-right: 0px;
+
+    /* Safe-area — injected at runtime by iOS Swift or JS plugin */
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-top:    env(safe-area-inset-top,    0px);
+    --safe-area-left:   env(safe-area-inset-left,   0px);
+    --safe-area-right:  env(safe-area-inset-right,  0px);
   }
 
   * {
@@ -52,9 +53,9 @@
 }
 
 @layer components {
+  /* ===== Root Layout ===== */
   .app-root {
     height: 100dvh;
-    height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -68,13 +69,7 @@
     min-height: 0;
   }
 
-  /* Every page's scrollable content gets bottom padding so the last item
-     isn't hidden behind the tab-bar + safe-area. */
-  .page-layer > div > .overflow-y-auto,
-  .page-layer > div > div > .overflow-y-auto {
-    padding-bottom: calc(1rem + var(--safe-area-bottom, 0px));
-  }
-
+  /* ===== Page Layer (tab switching) ===== */
   .page-layer {
     position: absolute;
     inset: 0;
@@ -93,7 +88,15 @@
     pointer-events: auto;
   }
 
-  /* ───── 底部导航栏 ───── */
+  /* Scrollable content inside each page gets bottom padding so the last
+     item is never hidden behind the tab-bar + safe-area. */
+  .page-layer .scroll-content,
+  .page-layer > div > .overflow-y-auto,
+  .page-layer > div > div > .overflow-y-auto {
+    padding-bottom: calc(var(--safe-area-bottom, 0px));
+  }
+
+  /* ===== Bottom Tab Bar ===== */
   .tab-bar {
     flex-shrink: 0;
     position: relative;
@@ -102,11 +105,16 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid rgba(0, 0, 0, 0.05);
-    padding-bottom: var(--safe-area-bottom, 0px);
+    /* CRITICAL: padding-bottom must create enough space for the
+       iOS Home Indicator so buttons sit above it. */
+    padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    /* Minimum height guarantees buttons are visible even if the
+       safe-area variable is 0 (e.g. on old devices). */
+    min-height: 64px;
     transform: translateZ(0);
   }
 
-  /* ───── 记账弹窗 ───── */
+  /* ===== Bottom Sheet ===== */
   .bottom-sheet {
     position: fixed;
     inset: 0;
@@ -145,11 +153,10 @@
     transform: translateY(100%) translateZ(0);
     transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
-    max-height: 92vh;
-    max-height: calc(92dvh - var(--safe-area-bottom, 0px));
+    max-height: calc(92dvh - var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)));
     display: flex;
     flex-direction: column;
-    padding-bottom: var(--safe-area-bottom, 0px);
+    padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
   }
 
   .bottom-sheet.open .bottom-sheet-panel {
@@ -190,14 +197,6 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
-  }
-
-  .safe-area-top {
-    padding-top: var(--safe-area-top, env(safe-area-inset-top, 0px));
-  }
-
-  .safe-area-bottom {
-    padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
   }
 
   .gpu-layer {
