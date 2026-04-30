@@ -61,6 +61,7 @@ function drawChart(
   width: number,
   height: number,
   view: ViewState,
+  noSmooth = false,
 ) {
   const dpr = window.devicePixelRatio || 1;
   const padding = { top: 12, right: 12, bottom: 32, left: 56 };
@@ -72,7 +73,7 @@ function drawChart(
   ctx.scale(dpr, dpr);
 
   // Decide internal grouping based on canvas width
-  const minBarPx = 8; // minimum pixel width per bar including gap
+  const minBarPx = 4; // minimum pixel width per bar including gap
   const maxFitBars = Math.max(5, Math.floor(chartW / minBarPx));
   const groupSize = view.count > maxFitBars ? Math.ceil(view.count / maxFitBars) : 1;
 
@@ -106,9 +107,13 @@ function drawChart(
   const targetMin = rawMin - margin;
   const targetMax = rawMax + margin;
 
-  // Smooth transition from previous range (20% per frame)
-  _prevMin = lerp(_prevMin, targetMin, 0.2);
-  _prevMax = lerp(_prevMax, targetMax, 0.2);
+  if (noSmooth) {
+    _prevMin = targetMin;
+    _prevMax = targetMax;
+  } else {
+    _prevMin = lerp(_prevMin, targetMin, 0.2);
+    _prevMax = lerp(_prevMax, targetMax, 0.2);
+  }
   const minV = _prevMin;
   const maxV = _prevMax;
   const range = maxV - minV || 1;
@@ -298,12 +303,37 @@ export function KLineChart({ data }: KLineChartProps) {
     gesture.current.mode = null;
   }, []);
 
-  // Export chart as PNG
+  // Export chart as PNG — renders full data on a temporary canvas
   const handleExport = useCallback(async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!data.length) return;
+
+    // Pause main canvas animation to avoid state collision
+    cancelAnimationFrame(rafRef.current);
+    const savedMin = _prevMin;
+    const savedMax = _prevMax;
+
     try {
-      const dataUrl = canvas.toDataURL('image/png');
+      // Build temporary canvas sized to fit every data point (no aggregation)
+      const padding = { top: 12, right: 12, bottom: 32, left: 56 };
+      const targetChartW = data.length * 4; // minBarPx=4, so groupSize stays 1
+      const targetWidth = Math.min(12000, Math.max(300, targetChartW + padding.left + padding.right));
+      const targetHeight = 320;
+
+      const tempCanvas = document.createElement('canvas');
+      const dpr = 1; // 1x is enough and keeps dimensions safe
+      tempCanvas.width = targetWidth * dpr;
+      tempCanvas.height = targetHeight * dpr;
+      tempCanvas.style.width = `${targetWidth}px`;
+      tempCanvas.style.height = `${targetHeight}px`;
+
+      const ctx = tempCanvas.getContext('2d');
+      if (!ctx) return;
+
+      const fullView: ViewState = { offset: 0, count: data.length };
+      drawChart(ctx, data, targetWidth, targetHeight, fullView, true);
+
+      // Export PNG
+      const dataUrl = tempCanvas.toDataURL('image/png');
       const base64 = dataUrl.split(',')[1];
       const byteString = atob(base64);
       const buffer = new ArrayBuffer(byteString.length);
@@ -320,13 +350,13 @@ export function KLineChart({ data }: KLineChartProps) {
 
         const reader = new FileReader();
         reader.readAsDataURL(blob);
-        const data = await new Promise<string>((resolve) => {
+        const b64data = await new Promise<string>((resolve) => {
           reader.onloadend = () => resolve(reader.result as string);
         });
 
         await Filesystem.writeFile({
           path: fileName,
-          data: data,
+          data: b64data,
           directory: Directory.Cache,
         });
 
@@ -357,9 +387,14 @@ export function KLineChart({ data }: KLineChartProps) {
       }
     } catch {
       setExportStatus('导出失败');
+    } finally {
+      // Restore Y-range state and resume main canvas
+      _prevMin = savedMin;
+      _prevMax = savedMax;
+      rafRef.current = requestAnimationFrame(redraw);
     }
     setTimeout(() => setExportStatus(''), 2000);
-  }, []);
+  }, [data, redraw]);
 
   return (
     <div
