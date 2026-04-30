@@ -14,7 +14,6 @@ const iconMap: Record<string, typeof Coffee> = {
 
 /* ─────────────── Types ─────────────── */
 type ReportType = 'category' | 'trend';
-type Granularity = 'day' | 'week' | 'month';
 
 interface KPoint {
   label: string;
@@ -28,26 +27,7 @@ interface KPoint {
 
 /* ─────────────── Helpers ─────────────── */
 function parseDate(d: string) { return new Date(d + 'T00:00:00'); }
-function startOfWeek(d: Date) {
-  const r = new Date(d);
-  const day = r.getDay();
-  r.setDate(r.getDate() - day);
-  return r;
-}
-function startOfMonth(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
-function sameMonth(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
-}
-function sameWeek(a: Date, b: Date) {
-  const wa = startOfWeek(a);
-  const wb = startOfWeek(b);
-  return wa.getTime() === wb.getTime();
-}
-function shortLabel(d: Date, g: Granularity) {
-  if (g === 'month') return `${d.getMonth() + 1}月`;
-  if (g === 'week') return `${d.getMonth() + 1}/${d.getDate()}`;
+function shortLabel(d: Date) {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
@@ -73,79 +53,23 @@ function buildDailyNetWorth(txs: { date: string; type: 'expense' | 'income'; amo
   return daily;
 }
 
-function aggregate(daily: ReturnType<typeof buildDailyNetWorth>, g: Granularity): KPoint[] {
+function aggregate(daily: ReturnType<typeof buildDailyNetWorth>): KPoint[] {
   if (daily.length === 0) return [];
-  if (g === 'day') {
-    return daily.map((d, i) => ({
-      label: shortLabel(parseDate(d.date), 'day'),
-      start: d.date,
-      end: d.date,
-      open: i === 0 ? 0 : daily[i - 1].net,
-      close: d.net,
-      income: d.income,
-      expense: d.expense,
-    }));
-  }
-  if (g === 'week') {
-    const groups: KPoint[] = [];
-    let curr: KPoint | null = null;
-    for (let i = 0; i < daily.length; i++) {
-      const d = daily[i];
-      const dd = parseDate(d.date);
-      if (!curr || !sameWeek(parseDate(curr.start), dd)) {
-        if (curr) groups.push(curr);
-        curr = {
-          label: shortLabel(startOfWeek(dd), 'week'),
-          start: d.date,
-          end: d.date,
-          open: i === 0 ? 0 : daily[i - 1].net,
-          close: d.net,
-          income: d.income,
-          expense: d.expense,
-        };
-      } else {
-        curr.end = d.date;
-        curr.close = d.net;
-        curr.income += d.income;
-        curr.expense += d.expense;
-      }
-    }
-    if (curr) groups.push(curr);
-    return groups;
-  }
-  // month
-  const groups: KPoint[] = [];
-  let curr: KPoint | null = null;
-  for (let i = 0; i < daily.length; i++) {
-    const d = daily[i];
-    const dd = parseDate(d.date);
-    if (!curr || !sameMonth(parseDate(curr.start), dd)) {
-      if (curr) groups.push(curr);
-      curr = {
-        label: shortLabel(startOfMonth(dd), 'month'),
-        start: d.date,
-        end: d.date,
-        open: i === 0 ? 0 : daily[i - 1].net,
-        close: d.net,
-        income: d.income,
-        expense: d.expense,
-      };
-    } else {
-      curr.end = d.date;
-      curr.close = d.net;
-      curr.income += d.income;
-      curr.expense += d.expense;
-    }
-  }
-  if (curr) groups.push(curr);
-  return groups;
+  return daily.map((d, i) => ({
+    label: shortLabel(parseDate(d.date)),
+    start: d.date,
+    end: d.date,
+    open: i === 0 ? 0 : daily[i - 1].net,
+    close: d.net,
+    income: d.income,
+    expense: d.expense,
+  }));
 }
 
 export function AnalyticsPage() {
   const { state, getMonthlyTotal, getMonthlyByCategory } = useApp();
   const [currentMonth, setCurrentMonth] = useState(state.currentMonth);
   const [reportType, setReportType] = useState<ReportType>('category');
-  const [granularity, setGranularity] = useState<Granularity>('day');
 
   const monthExpense = getMonthlyTotal(currentMonth, 'expense');
   const monthIncome = getMonthlyTotal(currentMonth, 'income');
@@ -181,11 +105,11 @@ export function AnalyticsPage() {
     return { ...item, percent, arcLength, offset };
   });
 
-  // K-Line data
+  // K-Line data (always daily; internal aggregation in chart)
   const klineData = useMemo(() => {
     const daily = buildDailyNetWorth(state.transactions);
-    return aggregate(daily, granularity);
-  }, [state.transactions, granularity]);
+    return aggregate(daily);
+  }, [state.transactions]);
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: '#F9FAFB' }}>
@@ -343,43 +267,22 @@ export function AnalyticsPage() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              {/* Granularity indicator */}
-              <div className="px-4 pt-2 pb-1 flex items-center justify-between">
-                <div className="flex gap-2">
-                  {(['day', 'week', 'month'] as Granularity[]).map(g => (
-                    <button
-                      key={g}
-                      onClick={() => { setGranularity(g); }}
-                      className="px-3 py-1 rounded-full text-xs font-medium transition-all"
-                      style={granularity === g
-                        ? { backgroundColor: 'var(--brand)', color: '#fff' }
-                        : { backgroundColor: '#F2F2F7', color: '#8A8A8E' }}
-                    >
-                      {g === 'day' && '日'}
-                      {g === 'week' && '周'}
-                      {g === 'month' && '月'}
-                    </button>
-                  ))}
-                </div>
+              {/* Hint */}
+              <div className="px-4 pt-2 pb-1 flex items-center justify-end">
                 <span className="text-[10px]" style={{ color: '#C7C7CC' }}>单指滑动平移 · 双指捏合缩放</span>
               </div>
 
               {/* K-Line Chart */}
               <div className="px-4 py-2">
                 <div className="rounded-2xl shadow-sm p-3" style={{ backgroundColor: '#fff' }}>
-                  <h3 className="text-sm font-semibold mb-2" style={{ color: '#1A1A1A' }}>
-                    净资产趋势 {granularity === 'day' ? '(日)' : granularity === 'week' ? '(周)' : '(月)'}
-                  </h3>
+                  <h3 className="text-sm font-semibold mb-2" style={{ color: '#1A1A1A' }}>净资产趋势</h3>
                   {klineData.length === 0 ? (
                     <div className="py-12 text-center">
                       <BarChart3 size={32} style={{ color: '#C7C7CC' }} className="mx-auto mb-2" />
                       <p className="text-sm" style={{ color: '#C7C7CC' }}>暂无数据，开始记账后查看趋势</p>
                     </div>
                   ) : (
-                    <KLineChart
-                      data={klineData}
-                      onGranularityChange={setGranularity}
-                    />
+                    <KLineChart data={klineData} />
                   )}
                   {/* Legend */}
                   <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTop: '1px solid #F0F0F0' }}>

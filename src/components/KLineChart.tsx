@@ -1,6 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Maximize2, X, ChevronLeft } from 'lucide-react';
-import { useTheme } from '@/context/ThemeContext';
+import { Download } from 'lucide-react';
 
 /* ───── Types ───── */
 interface KPoint {
@@ -9,27 +8,20 @@ interface KPoint {
   end: string;
   open: number;
   close: number;
-  income: number;
-  expense: number;
 }
 
 interface KLineChartProps {
-  data: KPoint[];
-  onGranularityChange?: (g: 'day' | 'week' | 'month') => void;
+  data: KPoint[];   // daily data only
 }
 
 interface ViewState {
-  offset: number;    // data index offset (float, for sub-pixel panning)
-  count: number;     // how many data points visible
-  granularity: 'day' | 'week' | 'month';
+  offset: number;   // data index offset
+  count: number;    // how many data points visible
 }
 
-/* ───── Data Helpers ───── */
-function formatY(v: number) {
-  if (Math.abs(v) >= 10000) return (v / 10000).toFixed(1) + 'w';
-  if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + 'k';
-  return v.toFixed(0);
-}
+/* ───── Smooth-interp helper for Y-range ───── */
+function lerp(a: number, b: number, t: number) { return a + (b - a) * Math.min(1, t); }
+let _prevMin = 0, _prevMax = 100;
 
 function calcMA(values: number[], period: number) {
   return values.map((_, i) => {
@@ -40,20 +32,35 @@ function calcMA(values: number[], period: number) {
   });
 }
 
-/* Smooth-interpolation helper for Y-range transitions */
-function lerp(a: number, b: number, t: number) { return a + (b - a) * Math.min(1, t); }
+function formatY(v: number) {
+  if (Math.abs(v) >= 10000) return (v / 10000).toFixed(1) + 'w';
+  if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + 'k';
+  return v.toFixed(0);
+}
 
-let _prevMin = 0;
-let _prevMax = 100;
+/* ───── Internal aggregation: group N days into 1 bar ───── */
+function aggregate(data: KPoint[], groupSize: number): KPoint[] {
+  if (groupSize <= 1) return data;
+  const out: KPoint[] = [];
+  for (let i = 0; i < data.length; i += groupSize) {
+    const slice = data.slice(i, i + groupSize);
+    const open = slice[0].open;
+    const close = slice[slice.length - 1].close;
+    const startLabel = slice[0].label;
+    const endLabel   = slice[slice.length - 1].label;
+    const label = startLabel === endLabel ? startLabel : `${startLabel}-${endLabel}`;
+    out.push({ label, start: slice[0].start, end: slice[slice.length - 1].end, open, close });
+  }
+  return out;
+}
 
 /* ───── Chart Renderer ───── */
 function drawChart(
   ctx: CanvasRenderingContext2D,
-  data: KPoint[],
+  rawData: KPoint[],
   width: number,
   height: number,
   view: ViewState,
-  brandColor: string,
 ) {
   const dpr = window.devicePixelRatio || 1;
   const padding = { top: 12, right: 12, bottom: 32, left: 56 };
@@ -64,19 +71,31 @@ function drawChart(
   ctx.save();
   ctx.scale(dpr, dpr);
 
-  // Determine visible range
+  // Decide internal grouping based on canvas width
+  const minBarPx = 8; // minimum pixel width per bar including gap
+  const maxFitBars = Math.max(5, Math.floor(chartW / minBarPx));
+  const groupSize = view.count > maxFitBars ? Math.ceil(view.count / maxFitBars) : 1;
+
+  // Aggregate raw data
+  const data = aggregate(rawData, groupSize);
   const total = data.length;
-  const step = chartW / view.count;
-  const startIdx = Math.max(0, Math.floor(view.offset));
-  const endIdx = Math.min(total, Math.ceil(view.offset + view.count));
+  const logicalCount = view.count / groupSize;
+  const step = chartW / Math.max(1, logicalCount);
+
+  // Visible range
+  const logicalOffset = view.offset / groupSize;
+  const startIdx = Math.max(0, Math.floor(logicalOffset));
+  const endIdx = Math.min(total, Math.ceil(logicalOffset + logicalCount));
+
+  if (total === 0 || startIdx >= endIdx) { ctx.restore(); return; }
 
   // Y range — adaptive to visible data + 10% margin + smooth transition
-  const visOpens  = data.slice(startIdx, endIdx).map(d => d.open);
-  const visCloses = data.slice(startIdx, endIdx).map(d => d.close);
+  const closes  = data.slice(startIdx, endIdx).map(d => d.close);
+  const opens   = data.slice(startIdx, endIdx).map(d => d.open);
   const fullMA7  = calcMA(data.map(d => d.close), 7);
   const fullMA14 = calcMA(data.map(d => d.close), 14);
   const fullMA30 = calcMA(data.map(d => d.close), 30);
-  const allY: number[] = [...visOpens, ...visCloses];
+  const allY: number[] = [...opens, ...closes];
   [fullMA7, fullMA14, fullMA30].forEach(full => {
     full.slice(startIdx, endIdx).forEach(v => { if (v !== null) allY.push(v); });
   });
@@ -107,18 +126,17 @@ function drawChart(
     ctx.fillText(formatY(maxV - (range * i) / 4), padding.left - 6, y);
   }
 
-  // K bodies — color by profit/loss (close vs open)
-  const barW = Math.max(2, step * 0.55);
+  // K bodies — color by profit/loss
+  const barW = Math.max(2, Math.min(step * 0.55, chartW / maxFitBars * 0.55));
   for (let i = startIdx; i < endIdx; i++) {
     const d = data[i];
-    const x = padding.left + (i - view.offset) * step + (step - barW) / 2;
+    const x = padding.left + (i - logicalOffset) * step + (step - barW) / 2;
     const top = yScale(Math.max(d.open, d.close));
     const bottom = yScale(Math.min(d.open, d.close));
     const h = Math.max(1.5, bottom - top);
-    // Color: green=profit, red=loss, brand=flat
     if (d.close > d.open)      ctx.fillStyle = '#34C759';
     else if (d.close < d.open) ctx.fillStyle = '#FF3B30';
-    else                       ctx.fillStyle = brandColor;
+    else                       ctx.fillStyle = '#8A8A8E';
     ctx.globalAlpha = 0.75;
     ctx.beginPath();
     ctx.roundRect(x, top, barW, h, 2);
@@ -126,7 +144,7 @@ function drawChart(
     ctx.globalAlpha = 1;
   }
 
-  // MAs (already computed above for Y-range — reuse)
+  // MAs
   const drawMA = (full: (number | null)[], color: string) => {
     ctx.strokeStyle = color; ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -135,7 +153,7 @@ function drawChart(
     for (let i = 0; i < sliced.length; i++) {
       const v = sliced[i];
       if (v === null) continue;
-      const x = padding.left + (startIdx + i - view.offset) * step + step / 2;
+      const x = padding.left + (startIdx + i - logicalOffset) * step + step / 2;
       const y = yScale(v);
       if (!started) { ctx.moveTo(x, y); started = true; }
       else ctx.lineTo(x, y);
@@ -153,20 +171,19 @@ function drawChart(
   ctx.font = '10px -apple-system, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   for (let i = startIdx; i < endIdx; i += labelStep) {
-    const x = padding.left + (i - view.offset) * step + step / 2;
+    const x = padding.left + (i - logicalOffset) * step + step / 2;
     if (x < padding.left || x > padding.left + chartW) continue;
     ctx.fillText(data[i].label, x, padding.top + chartH + 4);
   }
 
-  // Legend (only MAs, no profit/loss colors)
-  const legendX = padding.left + chartW;
-  const legends = [
+  // Legend (only MAs)
+  const legendItems = [
     { color: '#FF9500', label: 'MA7' },
     { color: '#5856D6', label: 'MA14' },
     { color: '#007AFF', label: 'MA30' },
   ];
-  legends.forEach((l, i) => {
-    const x = legendX - 90 + i * 35;
+  legendItems.forEach((l, i) => {
+    const x = padding.left + chartW - 95 + i * 35;
     ctx.fillStyle = l.color;
     ctx.fillRect(x, 4, 10, 3);
     ctx.fillStyle = '#8A8A8E';
@@ -179,28 +196,23 @@ function drawChart(
 }
 
 /* ───── KLineChart Component ───── */
-export function KLineChart({ data, onGranularityChange }: KLineChartProps) {
+export function KLineChart({ data }: KLineChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const brand = useTheme();
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
 
-  // View state
   const [view, setView] = useState<ViewState>(() => ({
     offset: Math.max(0, data.length - 30),
     count: Math.min(30, data.length),
-    granularity: 'day',
   }));
 
-  // Gesture state (mutable ref for performance)
+  // Gesture state
   const gesture = useRef({
     active: false,
     mode: null as 'pan' | 'pinch' | null,
     panStartX: 0, panStartOffset: 0,
     pinchStartDist: 0, pinchStartCount: 0, pinchCenter: 0,
-    lastTouches: [] as { clientX: number; clientY: number }[],
   });
-
   const rafRef = useRef<number>(0);
 
   // Redraw
@@ -211,6 +223,7 @@ export function KLineChart({ data, onGranularityChange }: KLineChartProps) {
     const rect = wrapper.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
+    if (w === 0 || h === 0) return;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
@@ -218,12 +231,10 @@ export function KLineChart({ data, onGranularityChange }: KLineChartProps) {
     canvas.style.height = `${h}px`;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    drawChart(ctx, data, w, h, view, brand);
-  }, [data, view, brand]);
+    drawChart(ctx, data, w, h, view);
+  }, [data, view]);
 
-  useEffect(() => {
-    redraw();
-  }, [redraw]);
+  useEffect(() => { redraw(); }, [redraw]);
 
   useEffect(() => {
     const onResize = () => { cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(redraw); };
@@ -236,9 +247,7 @@ export function KLineChart({ data, onGranularityChange }: KLineChartProps) {
     e.preventDefault();
     const t = e.touches;
     const g = gesture.current;
-    g.lastTouches = Array.from(t).map(touch => ({ clientX: touch.clientX, clientY: touch.clientY }));
     g.active = true;
-
     if (t.length === 1) {
       g.mode = 'pan';
       g.panStartX = t[0].clientX;
@@ -268,7 +277,6 @@ export function KLineChart({ data, onGranularityChange }: KLineChartProps) {
         offset: Math.max(0, Math.min(data.length - prev.count, newOffset)),
       }));
     } else if (t.length >= 2) {
-      // Pinch
       const dx = t[1].clientX - t[0].clientX;
       const dy = t[1].clientY - t[0].clientY;
       const dist = Math.hypot(dx, dy);
@@ -277,125 +285,111 @@ export function KLineChart({ data, onGranularityChange }: KLineChartProps) {
       const centerRatio = g.pinchCenter / (wrapperRef.current?.clientWidth || 320);
       const centerData = view.offset + view.count * centerRatio;
       const newOffset = centerData - newCount * centerRatio;
-
-      setView(prev => {
-        const clampedOffset = Math.max(0, Math.min(data.length - newCount, newOffset));
-        // Auto granularity
-        let g2 = prev.granularity;
-        if (newCount <= 15 && g2 !== 'day') g2 = 'day';
-        else if (newCount > 15 && newCount <= 40 && g2 !== 'week') g2 = 'week';
-        else if (newCount > 40 && g2 !== 'month') g2 = 'month';
-        return { offset: clampedOffset, count: newCount, granularity: g2 };
+      setView({
+        offset: Math.max(0, Math.min(data.length - newCount, newOffset)),
+        count: newCount,
       });
-
       if (g.mode !== 'pinch') g.mode = 'pinch';
     }
-    g.lastTouches = Array.from(t).map(touch => ({ clientX: touch.clientX, clientY: touch.clientY }));
   }, [data.length, view]);
 
   const handleTouchEnd = useCallback(() => {
-    const g = gesture.current;
-    g.active = false;
-    g.mode = null;
+    gesture.current.active = false;
+    gesture.current.mode = null;
   }, []);
 
-  // Granularity change callback
-  useEffect(() => {
-    onGranularityChange?.(view.granularity);
-  }, [view.granularity, onGranularityChange]);
-
-  // Fullscreen
-  const enterFullscreen = useCallback(() => {
-    setIsFullscreen(true);
-    // Try to lock landscape
+  // Export chart as PNG
+  const handleExport = useCallback(async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     try {
-      const scr = screen as any;
-      if (scr.orientation && scr.orientation.lock) {
-        scr.orientation.lock('landscape').catch(() => {});
-      }
-    } catch { /* ignore */ }
-  }, []);
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64 = dataUrl.split(',')[1];
+      const byteString = atob(base64);
+      const buffer = new ArrayBuffer(byteString.length);
+      const view = new Uint8Array(buffer);
+      for (let i = 0; i < byteString.length; i++) view[i] = byteString.charCodeAt(i);
+      const blob = new Blob([buffer], { type: 'image/png' });
 
-  const exitFullscreen = useCallback(() => {
-    setIsFullscreen(false);
-    try {
-      const scr = screen as any;
-      if (scr.orientation && scr.orientation.unlock) {
-        scr.orientation.unlock();
-      }
-    } catch { /* ignore */ }
-  }, []);
+      const fileName = `flowcash_chart_${new Date().toISOString().slice(0, 10)}.png`;
 
-  // Fullscreen resize
-  useEffect(() => {
-    if (isFullscreen) {
-      const timer = setTimeout(() => { redraw(); }, 300);
-      return () => clearTimeout(timer);
+      // Try Capacitor first
+      try {
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        const data = await new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+        });
+
+        await Filesystem.writeFile({
+          path: fileName,
+          data: data,
+          directory: Directory.Cache,
+        });
+
+        const fileUri = await Filesystem.getUri({
+          path: fileName,
+          directory: Directory.Cache,
+        });
+
+        await Share.share({
+          title: 'FlowCash 图表',
+          text: '净资产趋势图',
+          url: fileUri.uri,
+          dialogTitle: '保存图表',
+        });
+
+        setExportStatus('导出成功');
+      } catch {
+        // Browser fallback: download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setExportStatus('已下载');
+      }
+    } catch {
+      setExportStatus('导出失败');
     }
-  }, [isFullscreen, redraw]);
+    setTimeout(() => setExportStatus(''), 2000);
+  }, []);
 
   return (
-    <>
-      <div
-        ref={wrapperRef}
-        className="relative rounded-xl overflow-hidden"
-        style={{ backgroundColor: '#fff', height: isFullscreen ? '100%' : 220, touchAction: 'none' }}
+    <div
+      ref={wrapperRef}
+      className="relative rounded-xl overflow-hidden"
+      style={{ backgroundColor: '#fff', height: 220, touchAction: 'none' }}
+    >
+      <button
+        onClick={handleExport}
+        className="absolute top-2 right-2 z-10 w-7 h-7 rounded-lg flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(0,0,0,0.06)' }}
       >
-        {!isFullscreen && (
-          <button
-            onClick={enterFullscreen}
-            className="absolute top-2 right-2 z-10 w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(0,0,0,0.06)' }}
-          >
-            <Maximize2 size={14} style={{ color: '#8A8A8E' }} />
-          </button>
-        )}
-        <canvas
-          ref={canvasRef}
-          className="w-full h-full"
-          style={{ touchAction: 'none' }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onTouchCancel={handleTouchEnd}
-        />
-      </div>
+        <Download size={14} style={{ color: '#8A8A8E' }} />
+      </button>
 
-      {/* Fullscreen Overlay */}
-      {isFullscreen && (
-        <div
-          className="fixed inset-0 z-[200] flex flex-col"
-          style={{ backgroundColor: '#1A1A1A' }}
-        >
-          {/* Header */}
-          <div className="shrink-0 flex items-center justify-between px-4 py-3">
-            <button onClick={exitFullscreen} className="flex items-center gap-1">
-              <ChevronLeft size={22} style={{ color: '#fff' }} />
-              <span className="text-sm font-medium" style={{ color: '#fff' }}>返回</span>
-            </button>
-            <span className="text-sm font-semibold" style={{ color: '#fff' }}>净资产趋势</span>
-            <button onClick={exitFullscreen} className="w-8 h-8 flex items-center justify-center">
-              <X size={20} style={{ color: '#fff' }} />
-            </button>
-          </div>
-          {/* Chart */}
-          <div
-            ref={wrapperRef}
-            className="flex-1 relative"
-            style={{ touchAction: 'none' }}
-          >
-            <canvas
-              ref={canvasRef}
-              className="w-full h-full"
-              style={{ touchAction: 'none' }}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              onTouchCancel={handleTouchEnd}
-            />
-          </div>
+      {exportStatus && (
+        <div className="absolute top-2 left-2 z-10 px-2 py-1 rounded-full text-[10px] text-white" style={{ backgroundColor: '#1A1A1A' }}>
+          {exportStatus}
         </div>
       )}
-    </>
+
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full"
+        style={{ touchAction: 'none' }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+      />
+    </div>
   );
 }
