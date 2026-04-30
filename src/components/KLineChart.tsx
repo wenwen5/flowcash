@@ -96,9 +96,13 @@ function drawChart(
   // Y range — adaptive to visible data + 10% margin + smooth transition
   const closes  = data.slice(startIdx, endIdx).map(d => d.close);
   const opens   = data.slice(startIdx, endIdx).map(d => d.open);
-  const fullMA7  = calcMA(data.map(d => d.close), 7);
-  const fullMA14 = calcMA(data.map(d => d.close), 14);
-  const fullMA30 = calcMA(data.map(d => d.close), 30);
+  // MA periods adjusted for grouping: always represent ~7/14/30 raw days
+  const maPeriod7  = Math.max(1, Math.round(7  / groupSize));
+  const maPeriod14 = Math.max(1, Math.round(14 / groupSize));
+  const maPeriod30 = Math.max(1, Math.round(30 / groupSize));
+  const fullMA7  = calcMA(data.map(d => d.close), maPeriod7);
+  const fullMA14 = calcMA(data.map(d => d.close), maPeriod14);
+  const fullMA30 = calcMA(data.map(d => d.close), maPeriod30);
   const allY: number[] = [...opens, ...closes];
   [fullMA7, fullMA14, fullMA30].forEach(full => {
     full.slice(startIdx, endIdx).forEach(v => { if (v !== null) allY.push(v); });
