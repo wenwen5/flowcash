@@ -22,11 +22,9 @@
     --income: #34C759;
     --radius: 0.75rem;
 
-    /* Hard-coded iPhone safe-area insets */
-    /* Top: iPhone notch / dynamic island ≈ 44-47px, use 44px as safe default */
-    /* Bottom: Home Indicator ≈ 34px */
-    --safe-area-top: 44px;
-    --safe-area-bottom: 34px;
+    /* Safe-area placeholders — populated at runtime */
+    --safe-area-bottom: 0px;
+    --safe-area-top: 0px;
     --safe-area-left: 0px;
     --safe-area-right: 0px;
   }
@@ -106,7 +104,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid rgba(0, 0, 0, 0.05);
-    padding-bottom: 48px;
+    padding-bottom: var(--safe-area-bottom, 0px);
     transform: translateZ(0);
   }
 
@@ -149,10 +147,10 @@
     transform: translateY(100%) translateZ(0);
     transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
-    max-height: calc(92dvh - 48px);
+    max-height: calc(92dvh - var(--safe-area-bottom, 0px));
     display: flex;
     flex-direction: column;
-    padding-bottom: 48px;
+    padding-bottom: var(--safe-area-bottom, 0px);
   }
 
   .bottom-sheet.open .bottom-sheet-panel {
@@ -196,11 +194,11 @@
   }
 
   .safe-area-top {
-    padding-top: 44px;
+    padding-top: var(--safe-area-top, env(safe-area-inset-top, 0px));
   }
 
   .safe-area-bottom {
-    padding-bottom: 48px;
+    padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
   }
 
   .gpu-layer {
