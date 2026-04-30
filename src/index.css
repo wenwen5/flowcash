@@ -28,7 +28,19 @@
     touch-action: manipulation;
   }
 
-  html, body, #root {
+  html {
+    height: 100%;
+    height: -webkit-fill-available;
+    overflow: hidden;
+  }
+
+  body {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    overflow: hidden;
+  }
+
+  #root {
     height: 100%;
     overflow: hidden;
   }
@@ -49,7 +61,8 @@
 @layer components {
   /* ===== Root Layout ===== */
   .app-root {
-    height: 100dvh;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
     display: flex;
     flex-direction: column;
     overflow: hidden;
