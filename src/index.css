@@ -91,6 +91,12 @@
     pointer-events: auto;
   }
 
+  /* Ensure scrollable content never hides behind the tab-bar */
+  .page-layer > div > .overflow-y-auto,
+  .page-layer > div > div > .overflow-y-auto {
+    padding-bottom: 48px;
+  }
+
   /* ===== Bottom Tab Bar ===== */
   .tab-bar {
     flex-shrink: 0;
@@ -100,7 +106,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid rgba(0, 0, 0, 0.05);
-    padding-bottom: 34px;
+    padding-bottom: 48px;
     transform: translateZ(0);
   }
 
@@ -143,10 +149,10 @@
     transform: translateY(100%) translateZ(0);
     transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
-    max-height: calc(92dvh - 34px);
+    max-height: calc(92dvh - 48px);
     display: flex;
     flex-direction: column;
-    padding-bottom: 34px;
+    padding-bottom: 48px;
   }
 
   .bottom-sheet.open .bottom-sheet-panel {
@@ -194,7 +200,7 @@
   }
 
   .safe-area-bottom {
-    padding-bottom: 34px;
+    padding-bottom: 48px;
   }
 
   .gpu-layer {
