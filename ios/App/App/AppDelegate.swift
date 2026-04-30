@@ -6,9 +6,9 @@ import WebKit
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    private var hasInjected = false
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Listen for orientation changes to re-inject safe-area insets
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(orientationDidChange),
@@ -18,19 +18,33 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
-    /// Called every time the app becomes active (launch, foreground, rotation)
+    /// Called when the app becomes active (first launch or return from background).
+    /// WKWebView may not be fully ready on first call, so we inject multiple times
+    /// with increasing delays until one succeeds.
     func applicationDidBecomeActive(_ application: UIApplication) {
-        injectSafeAreaInsets()
+        hasInjected = false
+        let delays: [TimeInterval] = [0.0, 0.15, 0.35, 0.60]
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self = self, !self.hasInjected else { return }
+                self.injectSafeAreaInsets()
+            }
+        }
     }
 
     @objc func orientationDidChange() {
-        // Re-calculate after a short delay so the new layout has settled
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.injectSafeAreaInsets()
+        hasInjected = false
+        // Re-calculate after layout settles, then again as insurance
+        for delay in [0.2, 0.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self = self else { return }
+                self.injectSafeAreaInsets()
+            }
         }
     }
 
     /// Walk the view hierarchy to find the WKWebView and inject CSS safe-area variables.
+    /// Uses a completion handler to verify the script actually executed.
     func injectSafeAreaInsets() {
         guard let window = self.window else { return }
 
@@ -51,6 +65,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             r.style.setProperty('--safe-area-inset-top',    '\(top)px');
             r.style.setProperty('--safe-area-inset-left',   '\(left)px');
             r.style.setProperty('--safe-area-inset-right',  '\(right)px');
+            return 'ok';
         })();
         """
 
@@ -63,7 +78,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         if let webView = findWebView(in: window) {
-            webView.evaluateJavaScript(js, completionHandler: nil)
+            webView.evaluateJavaScript(js) { [weak self] result, error in
+                if error == nil && result != nil {
+                    self?.hasInjected = true
+                }
+            }
         }
     }
 
