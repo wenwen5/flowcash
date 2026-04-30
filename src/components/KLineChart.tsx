@@ -40,6 +40,12 @@ function calcMA(values: number[], period: number) {
   });
 }
 
+/* Smooth-interpolation helper for Y-range transitions */
+function lerp(a: number, b: number, t: number) { return a + (b - a) * Math.min(1, t); }
+
+let _prevMin = 0;
+let _prevMax = 100;
+
 /* ───── Chart Renderer ───── */
 function drawChart(
   ctx: CanvasRenderingContext2D,
@@ -64,15 +70,28 @@ function drawChart(
   const startIdx = Math.max(0, Math.floor(view.offset));
   const endIdx = Math.min(total, Math.ceil(view.offset + view.count));
 
-  // Y range
-  const closes = data.slice(startIdx, endIdx).map(d => d.close);
-  const ma7 = calcMA(data.map(d => d.close), 7).slice(startIdx, endIdx);
-  const ma14 = calcMA(data.map(d => d.close), 14).slice(startIdx, endIdx);
-  const ma30 = calcMA(data.map(d => d.close), 30).slice(startIdx, endIdx);
-  const allY = [...closes];
-  [ma7, ma14, ma30].forEach(ma => ma.forEach(v => { if (v !== null) allY.push(v); }));
-  const maxV = allY.length > 0 ? Math.max(...allY) * 1.05 : 100;
-  const minV = allY.length > 0 ? Math.min(...allY, 0) * 1.05 : -10;
+  // Y range — adaptive to visible data + 10% margin + smooth transition
+  const visOpens  = data.slice(startIdx, endIdx).map(d => d.open);
+  const visCloses = data.slice(startIdx, endIdx).map(d => d.close);
+  const fullMA7  = calcMA(data.map(d => d.close), 7);
+  const fullMA14 = calcMA(data.map(d => d.close), 14);
+  const fullMA30 = calcMA(data.map(d => d.close), 30);
+  const allY: number[] = [...visOpens, ...visCloses];
+  [fullMA7, fullMA14, fullMA30].forEach(full => {
+    full.slice(startIdx, endIdx).forEach(v => { if (v !== null) allY.push(v); });
+  });
+
+  const rawMin = allY.length > 0 ? Math.min(...allY) : 0;
+  const rawMax = allY.length > 0 ? Math.max(...allY) : 100;
+  const margin = (rawMax - rawMin) * 0.1 || Math.abs(rawMax) * 0.1;
+  const targetMin = rawMin - margin;
+  const targetMax = rawMax + margin;
+
+  // Smooth transition from previous range (20% per frame)
+  _prevMin = lerp(_prevMin, targetMin, 0.2);
+  _prevMax = lerp(_prevMax, targetMax, 0.2);
+  const minV = _prevMin;
+  const maxV = _prevMax;
   const range = maxV - minV || 1;
   const yScale = (v: number) => padding.top + (1 - (v - minV) / range) * chartH;
 
@@ -88,7 +107,7 @@ function drawChart(
     ctx.fillText(formatY(maxV - (range * i) / 4), padding.left - 6, y);
   }
 
-  // K bodies (统一品牌色)
+  // K bodies — color by profit/loss (close vs open)
   const barW = Math.max(2, step * 0.55);
   for (let i = startIdx; i < endIdx; i++) {
     const d = data[i];
@@ -96,23 +115,27 @@ function drawChart(
     const top = yScale(Math.max(d.open, d.close));
     const bottom = yScale(Math.min(d.open, d.close));
     const h = Math.max(1.5, bottom - top);
-    ctx.fillStyle = brandColor;
-    ctx.globalAlpha = 0.7;
+    // Color: green=profit, red=loss, brand=flat
+    if (d.close > d.open)      ctx.fillStyle = '#34C759';
+    else if (d.close < d.open) ctx.fillStyle = '#FF3B30';
+    else                       ctx.fillStyle = brandColor;
+    ctx.globalAlpha = 0.75;
     ctx.beginPath();
     ctx.roundRect(x, top, barW, h, 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
 
-  // MAs
-  const drawMA = (ma: (number | null)[], color: string) => {
+  // MAs (already computed above for Y-range — reuse)
+  const drawMA = (full: (number | null)[], color: string) => {
     ctx.strokeStyle = color; ctx.lineWidth = 1.5;
     ctx.beginPath();
     let started = false;
-    for (let i = startIdx; i < endIdx; i++) {
-      const v = ma[i - startIdx];
+    const sliced = full.slice(startIdx, endIdx);
+    for (let i = 0; i < sliced.length; i++) {
+      const v = sliced[i];
       if (v === null) continue;
-      const x = padding.left + (i - view.offset) * step + step / 2;
+      const x = padding.left + (startIdx + i - view.offset) * step + step / 2;
       const y = yScale(v);
       if (!started) { ctx.moveTo(x, y); started = true; }
       else ctx.lineTo(x, y);
@@ -120,15 +143,9 @@ function drawChart(
     ctx.stroke();
   };
 
-  // Full MAs (compute from full data, then slice)
-  const fullMA7 = calcMA(data.map(d => d.close), 7);
-  const fullMA14 = calcMA(data.map(d => d.close), 14);
-  const fullMA30 = calcMA(data.map(d => d.close), 30);
-
-  const sliceMA = (full: (number | null)[]) => full.slice(startIdx, endIdx);
-  drawMA(sliceMA(fullMA7), '#FF9500');
-  drawMA(sliceMA(fullMA14), '#5856D6');
-  drawMA(sliceMA(fullMA30), '#007AFF');
+  drawMA(fullMA7,  '#FF9500');
+  drawMA(fullMA14, '#5856D6');
+  drawMA(fullMA30, '#007AFF');
 
   // X labels
   const labelStep = Math.max(1, Math.ceil((endIdx - startIdx) / 7));
